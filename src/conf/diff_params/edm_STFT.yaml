@@ -1,0 +1,23 @@
+#Elucidated Diffusion Model (Karras et al. 2022)
+_target_: "diff_params.edm_STFT.EDM_STFT"
+
+#defaults: 
+#  - shared
+
+# SDE hyperparameters
+type: "ve_karras"
+sde_hp:
+  sigma_data: 1 #default for maestro
+  sigma_min: 1e-4
+  sigma_max: 400
+  rho: 10
+  max_sigma: 10
+
+stft:
+  n_fft: 1534
+  hop_length:  384
+  center: True
+  onesided: True
+  compression: 1
+  N_pad_spec: 64
+  audio_len: 262144

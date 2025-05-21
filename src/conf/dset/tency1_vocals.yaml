@@ -1,0 +1,26 @@
+
+train:
+  _target_: "datasets.tency_vocals.MultiDataset"
+  fs: 44100
+  path_csv: ["/scratch/elec/t412-asp/audio_datasets/singing_voice/OpenSinger/output.csv"]
+  priorities: [1]
+  load_len: 262144
+  normalize: False
+  apply_random_gain: False
+  gain_range: [-0.01, 0.01]
+
+inference_train:
+  _target_: datasets.tency_vocals.MaestroDatasetTest
+  segment_length: 184184
+  fs: 22050
+  path: "/scratch/shareddata/dldata/maestro/v3.0.0/maestro-v3.0.0"
+  years: [2004,2006,2008,2009,2011, 2013, 2014, 2015, 2017, 2018] # 
+  split: "test"
+
+  normalize: False
+  #sigma_data: 0.05 #for normalization purposes
+  num_examples: 2
+ 
+  #random seed
+  seed: 0
+
