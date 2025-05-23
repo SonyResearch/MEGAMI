@@ -1,8 +1,11 @@
 import torch
+import einops
 import numpy as np
 
 import utils.training_utils as utils
 from diff_params.shared import SDE
+
+import torch.distributed as dist
 
 
 class EDM_LDM(SDE):
@@ -16,6 +19,7 @@ class EDM_LDM(SDE):
         type,
         AE_type,
         sde_hp,
+        cfg_dropout_prob
         ):
 
         super().__init__(type, sde_hp)
@@ -30,12 +34,15 @@ class EDM_LDM(SDE):
         except Exception as e:
             print(e)
             print("max_sigma not defined, please add it. It should be the highest sigma value seen during training")
-        
 
 
+        try:
+            rank=dist.get_rank()
+            self.device = torch.device(f"cuda:{rank}")
+        except:
+            self.device = torch.device("cuda:0")
 
-        self.device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+        self.cfg_dropout_prob = cfg_dropout_prob
 
         if AE_type=="SAO_VAE":
             from stable_audio_tools import get_pretrained_model
@@ -63,14 +70,14 @@ class EDM_LDM(SDE):
         elif AE_type=="Music2Latent4":
             from music2latent4 import Inferencer
 
-            self.AE = EncoderDecoder()
-            self.AE=self.AE.to(self.device)
+            self.AE = Inferencer(device=self.device)
+            #self.AE=self.AE.to(self.device)
             def latent2seq(latent):
                 """
                 Convert the latent representation to a sequence of latent vectors.
                 """
                 # Reshape the latent representation to match the expected input shape
-                latent = latent.view(latent.size(0), -1)
+                latent = latent.view(latent.size(0), latent.size(1), -1)
                 return latent
 
             def seq2latent(latent_sequence):
@@ -78,14 +85,15 @@ class EDM_LDM(SDE):
                 Convert the sequence of latent vectors back to the original latent representation.
                 """
                 # Reshape the latent sequence to match the expected output shape
-                latent = latent_sequence.view(latent_sequence.size(0), -1, 64)
+                latent = latent_sequence.view(latent_sequence.size(0),latent_sequence.size(1), -1, 64)
                 return latent
 
 
             def encode_fn(x, mono=False):
-                assert x.ndim==2
+                assert x.ndim==3
+
                 if not mono:
-                    assert x.shape[0]==2
+                    assert x.shape[1]==2
                 else:
                     raise NotImplementedError("Mono not implemented yet")
 
@@ -101,6 +109,8 @@ class EDM_LDM(SDE):
                 return x
 
             self.AE_encode=encode_fn
+            self.AE_encode_compiled=torch.compile(encode_fn)
+
             self.AE_decode=decode_fn
 
 
@@ -204,6 +214,8 @@ class EDM_LDM(SDE):
         if n is None:
             n=self.sample_prior(shape=x.shape, dtype=x.dtype).to(x.device)
 
+        #print("mu device", mu.device, "sigma device", sigma.device, "n device", n.device, "rank", dist.get_rank())
+
         x_perturbed = mu + sigma *n
 
         cskip = self.cskip(sigma)
@@ -221,7 +233,7 @@ class EDM_LDM(SDE):
 
         return cin * x_perturbed, target, cnoise
 
-    def loss_fn(self, net, x,n=None, *args, **kwargs):
+    def loss_fn(self, net, sample=None, context=None, *args, **kwargs):
         """
         Loss function, which is the mean squared error between the denoised latent and the clean latent
         Args:
@@ -229,13 +241,29 @@ class EDM_LDM(SDE):
             x (Tensor): shape: (B,T) Intermediate noisy latent to denoise
             sigma (float): noise level (equal to timestep is sigma=t, which is our default)
         """
-        t = self.sample_time_training(x.shape[0]).to(x.device)
 
-        x=self.transform_forward(x)
+        y=sample
+
+        t = self.sample_time_training(y.shape[0]).to(y.device)
+
+
+
+        with torch.no_grad():
+            y=self.transform_forward(y, compile=True)
+            if context is not None:
+                context=self.transform_forward(context, compile=True)
+                #context=self.transform_forward(context)
+                null_embed = torch.zeros_like(context, device=context.device)
+                #dropout context with probability cfg_dropout_prob
+                mask = torch.rand(context.shape[0], context.shape[1], device=context.device) < self.cfg_dropout_prob
+                context = torch.where(mask.unsqueeze(-1), null_embed, context)
+    
+
+        #print("y shape", y.shape, "y stdev", y.std())
+        #x=self.transform_forward(context)
         #x=self.flatten(x)
 
-
-        input, target, cnoise = self.prepare_train_preconditioning(x, t, n=n)
+        input, target, cnoise = self.prepare_train_preconditioning(y, t )
 
 
         if len(cnoise.shape)==1:
@@ -243,20 +271,20 @@ class EDM_LDM(SDE):
         if input.ndim==2:
             input=input.unsqueeze(1)
 
-        estimate = self.flatten(net(input, cnoise))
+        estimate = net(input, cnoise, input_concat_cond=context)
+        #estimate = net(input, cnoise, input_concat_cond=None)
         
         if target.ndim==2 and estimate.ndim==3:
             estimate=estimate.squeeze(1)
 
         error=torch.square(torch.abs(estimate-target))
 
-        
 
         return error, self._std(t)
 
 
 
-    def denoiser(self, xn , net, t, *args, **kwargs):
+    def denoiser(self, xn , net, t, cond=None,cfg_scale=1.0, **kwargs):
         """
         This method does the whole denoising step, which implies applying the model and the preconditioning
         Args:
@@ -284,7 +312,7 @@ class EDM_LDM(SDE):
 
 
         #x_in=self.unflatten(x_in)
-        net_out=net(x_in, cnoise.to(torch.float32))  #this will crash because of broadcasting problems, debug later!
+        net_out=net(x_in, cnoise.to(torch.float32), input_concat_cond=cond, cfg_scale=cfg_scale)  #this will crash because of broadcasting problems, debug later!
         #net_out=self.flatten(net_out).to(xn.dtype)
 
         x_hat=cskip*xn + cout*net_out   
@@ -295,14 +323,19 @@ class EDM_LDM(SDE):
 
 
         
-    def transform_forward(self, x):
+    def transform_forward(self, x, compile=False):
         #TODO: Apply forward transform here
         #fake stereo
-        z=self.AE_encode(x)
+        if compile:
+            z=self.AE_encode_compiled(x)
+        else:
+            z=self.AE_encode(x)
+        z=einops.rearrange(z, "b t c -> b c t")
         return z
     
     def transform_inverse(self, z):
 
+        z=einops.rearrange(z, "b c t -> b t c")
         x=self.AE_decode(z)
 
         return x

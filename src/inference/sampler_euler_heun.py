@@ -18,8 +18,22 @@ class SamplerEulerHeun(Sampler):
         # order of the sampler
         self.order = self.args.tester.sampling_params.order
 
-    def predict_conditional(self, *args, **kwargs):
-        raise NotImplementedError
+    def predict_conditional(
+            self,
+            shape,  # observations (lowpssed signal) Tensor with shape ??
+            cond=None,
+            cfg_scale=1.0,
+            device=None,  # device
+    ):
+        self.cond = cond
+        assert self.cond is not None, "Conditional input is None"
+
+        self.cfg_scale = cfg_scale
+
+        if self.args.tester.wandb.use:
+            self.setup_wandb()
+
+        return self.predict(shape, device)
 
     def predict_unconditional(
             self,
@@ -53,8 +67,13 @@ class SamplerEulerHeun(Sampler):
     def get_Tweedie_estimate(self, x, t_i):
 
         if x.ndim==2:
-            x_hat = self.diff_params.denoiser(x.unsqueeze(1), self.model, t_i).squeeze(1)
+            x_=x.unsqueeze(1)
         elif x.ndim==3:
+            pass
+
+        if self.cond is not None:
+            x_hat = self.diff_params.denoiser(x, self.model, t_i, cond=self.cond, cfg_scale=self.cfg_scale)
+        else:
             x_hat = self.diff_params.denoiser(x, self.model, t_i)
 
         return x_hat
@@ -99,6 +118,13 @@ class SamplerEulerHeun(Sampler):
                 x_iplus1 = x_hat + dt * ode_integrand
 
             return x_iplus1, x_den
+    
+    def get_domain_shape(self, shape, device):
+
+        x=torch.zeros(shape, dtype=torch.float32).to(device)
+        X=self.diff_params.transform_forward(x)
+
+        return X.shape, X.dtype
 
     def predict(
             self,
@@ -110,8 +136,14 @@ class SamplerEulerHeun(Sampler):
         # get the noise schedule
         t = self.create_schedule().to(device).to(torch.float32)
 
+
+        shape_example, dtype = self.get_domain_shape(shape, device)
+        #print("shape_example", shape_example, dtype)
+
         # sample prior
-        x = self.diff_params.sample_prior(t=t[0], shape=shape).to(device).to(torch.float32)
+        x = self.diff_params.sample_prior(t=t[0], shape=shape_example, dtype=dtype)
+
+        #print("xT", x.shape, shape_example, x.dtype, dtype)
 
         x_init = x.clone()
 
@@ -131,13 +163,15 @@ class SamplerEulerHeun(Sampler):
                     if maxim < 1:
                         maxim = 1
                     for k in range(0, len(x)):
-                        self.wandb_run.log({"x" + str(k): wandb.Audio(x[k].detach().cpu().numpy() / maxim,
+                        x_wave=self.diff_params.transform_inverse(x[k].detach())
+                        self.wandb_run.log({"x" + str(k): wandb.Audio(x_wave.detach().cpu().numpy() / maxim,
                                                                       sample_rate=self.args.exp.sample_rate)}, step=i)
                     maxim = torch.max(torch.abs(x_den[0])).detach().cpu().numpy()
                     if maxim < 1:
                         maxim = 1
                     for k in range(0, len(x_den)):
-                        self.wandb_run.log({"x_tweedie" + str(k): wandb.Audio(x_den[k].detach().cpu().numpy() / maxim,
+                        x_wave=self.diff_params.transform_inverse(x_den[k].detach())
+                        self.wandb_run.log({"x_tweedie" + str(k): wandb.Audio(x_wave.detach().cpu().numpy() / maxim,
                                                                               sample_rate=self.args.exp.sample_rate)},
                                            step=i)
 
@@ -148,13 +182,9 @@ class SamplerEulerHeun(Sampler):
                 
             self.wandb_run.finish()
 
-        #if self.args.tester.dewhiten:
-        #    x_dewhiten = self.diff_params.dewhiten(x)
-        #    return x_dewhiten.detach(), x_init.detach()
-        #else:
-        x_den=self.diff_params.denormalize(x_den)
+        x_den_wave=self.diff_params.transform_inverse(x_den.detach())
 
-        return x_den.detach(), x_init.detach()
+        return x_den_wave.detach(), None
 
     def create_schedule(self, sigma_min=None, sigma_max=None, rho=None, T=None):
         """

@@ -603,11 +603,13 @@ def plot_spectrogram_from_cpxspec(X, refr=None):
 
 
 def error_line(error_y_mode='band', **kwargs):
+    print("hello error line", error_y_mode)
     """Extension of `plotly.express.line` to use error bands."""
     ERROR_MODES = {'bar','band','bars','bands',None}
     if error_y_mode not in ERROR_MODES:
         raise ValueError(f"'error_y_mode' must be one of {ERROR_MODES}, received {repr(error_y_mode)}.")
     if error_y_mode in {'bar','bars',None}:
+        print("Using error bars", kwargs)
         fig = px.line(**kwargs)
     elif error_y_mode in {'band','bands'}:
         if 'error_y' not in kwargs:

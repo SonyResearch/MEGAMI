@@ -217,72 +217,39 @@ class Trainer():
                 idx = np.where(mask == True)[0][0]
                 training_stats.report('error_sigma_' + str(self.sigma_bins[i]), error[idx].mean())
 
-    def apply_augmentations(self, x, augmentations):
+    def apply_augmentations(self, y, x, augmentations):
 
         list = augmentations.list
         for a in list:
-            if a == "segment_length":
-                possibilities = augmentations.segment_length.set
-                uniform = False
-                try:
-                    if augmentations.segment_length.uniform:
-                        uniform = True
-                except:
-                    pass
-                if uniform:
-                    seg_len = np.random.randint(possibilities[0], possibilities[-1])
-                    if seg_len >= x.shape[-1] / 2:
-                        batch_size = x.shape[0]
-                        x = x[:, :seg_len]
-                    elif seg_len >= x.shape[-1] / 4:
-                        batch_size = x.shape[0] * 2
-                        x = x.reshape(batch_size, x.shape[-1] // 2)
-                        x = x[:, :seg_len]
-                    else:
-                        raise ValueError("segment length too small")
-
-                else:
-                    i = np.random.randint(0, len(possibilities))
-                    seg_len = int(possibilities[i])
-                    batch_size = x.shape[0] * (x.shape[-1] // seg_len)
-                    x = x.reshape(batch_size, seg_len)
-
-                print("chunked", x.shape)
-            elif a == "gain":
-                gain_mean = augmentations.rms.mean
-                gain_std = augmentations.rms.std
-                # sample a gain value
-                gain = torch.randn(x.shape[0], device=x.device) * gain_std + gain_mean
-                gain = gain.unsqueeze(-1)
-
-                x = gain * x / x.std()
-
-            elif a == "polarity":
+            if a == "polarity":
                 prob = augmentations.polarity.prob
                 apply = torch.rand(x.shape[0]) > prob
+                y[apply] *= -1
                 x[apply] *= -1
 
             else:
                 print("augmentation not implemented: " + a)
 
-        return x
+        return y, x
 
     def get_batch(self):
         ''' Get an audio example from dset and apply the transform (spectrogram + compression)'''
         data = next(self.dset)
+        sample_y, sample_x = data[0].to(self.device), data[1].to(self.device)
+
         # check if the data is a tuple or a single tensor
-        if isinstance(data, tuple) or isinstance(data, list):
-            sample = data[0].to(self.device)
-            fs = data[1]
-            sample = t_utils.resample_batch(sample, fs, self.args.exp.sample_rate,
-                                            length_target=self.args.exp.audio_len)
-        else:
-            sample = next(self.dset).to(self.device)
+        #if isinstance(data, tuple) or isinstance(data, list):
+        #    sample = data[0].to(self.device)
+        #    fs = data[1]
+        #    sample = t_utils.resample_batch(sample, fs, self.args.exp.sample_rate,
+        #                                    length_target=self.args.exp.audio_len)
+        #else:
+        #    sample = next(self.dset).to(self.device)
 
 
-        #sample = self.apply_augmentations(sample, self.args.exp.augmentations)
+        sample_y, sample_x = self.apply_augmentations(sample_y, sample_x, self.args.exp.augmentations)
 
-        return sample
+        return sample_y, sample_x
 
     def train_step(self):
         '''Training step'''
@@ -290,10 +257,10 @@ class Trainer():
 
         self.optimizer.zero_grad()
 
-        sample = self.get_batch()
+        y, x = self.get_batch()
 
         #print("sample", sample.std(), sample.shape)
-        error, sigma = self.diff_params.loss_fn(self.network, sample, ema=self.ema)
+        error, sigma = self.diff_params.loss_fn(self.network, sample=y, context=x, ema=self.ema)
 
         #if error is a list, we need to process it separately
 
@@ -309,7 +276,7 @@ class Trainer():
             # Update weights.
             self.optimizer.step()
 
-            print("loss", loss.item(), "time", time.time() - a)
+            print("iteration", self.it,"loss", loss.item(), "time", time.time() - a)
 
             if self.args.logging.log:
                 self.process_loss_for_logging(error, sigma)
@@ -336,6 +303,7 @@ class Trainer():
          Do the simplest logging here. This will be called every 1000 iterations or so
         I will use the training_stats.report function for this, and aim to report the means and stds of the losses in wandb
         """
+
         training_stats.default_collector.update()
         loss_mean = training_stats.default_collector.mean('loss')
         self.wandb_run.log({'loss': loss_mean}, step=self.it)
@@ -345,13 +313,23 @@ class Trainer():
         sigma_stds = []
         for i in range(len(self.sigma_bins)):
             a = training_stats.default_collector.mean('error_sigma_' + str(self.sigma_bins[i]))
+            #replace NaN with 0
+            if np.isnan(a):
+                a = 0
+            a=np.float32(a)  #convert to float32
+            #set dtype to float32
             sigma_means.append(a)
+
+            self.wandb_run.log({'error_sigma_' + str(self.sigma_bins[i]): a}, step=self.it)
             a = training_stats.default_collector.std('error_sigma_' + str(self.sigma_bins[i]))
+            if np.isnan(a):
+                a = 0
+            a=np.float32(a)  #convert to float32
             sigma_stds.append(a)
 
-        figure = utils_logging.plot_loss_by_sigma(sigma_means, sigma_stds, self.sigma_bins,
-                                                  log_scale=False if self.diff_params.type == "FM" else True)
-        wandb.log({"loss_dependent_on_sigma": figure}, step=self.it, commit=True)
+        #figure = utils_logging.plot_loss_by_sigma(sigma_means, sigma_stds, self.sigma_bins,
+        #                                          log_scale=False if self.diff_params.type == "FM" else True)
+        #wandb.log({"loss_dependent_on_sigma": figure}, step=self.it, commit=True)
 
     def heavy_logging(self):
         """

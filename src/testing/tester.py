@@ -11,7 +11,6 @@ import omegaconf
 import hydra
 import utils.log as utils_logging
 import utils.training_utils as tr_utils
-import utils.testing_utils as tt_utils
 
 import soundfile as sf
 import numpy as np
@@ -20,16 +19,14 @@ import torchaudio
 
 class Tester():
     def __init__(
-            self, args, network, diff_params, inference_train_set=None, inference_test_set=None, device=None,
+            self, args, network, diff_params, test_set=None, device=None,
             in_training=False,
-            training_wandb_run=None
     ):
         self.args = args
         self.network = network
         self.diff_params = copy.copy(diff_params)
         self.device = device
-        self.inference_train_set = inference_train_set
-        self.inference_test_set = inference_test_set
+        self.test_set = test_set
         self.use_wandb = False  # hardcoded for now
         self.in_training = in_training
         self.sampler = hydra.utils.instantiate(args.tester.sampler, self.network, self.diff_params, self.args)
@@ -100,13 +97,13 @@ class Tester():
 
     def log_audio(self, pred, name: str):
         if self.use_wandb:
-            print(pred.shape)
-            pred = pred.view(-1)
-            maxim = torch.max(torch.abs(pred)).detach().cpu().numpy()
-            if maxim < 1:
-                maxim = 1
+            #pred = pred.view(-1)
+            #maxim = torch.max(torch.abs(pred)).detach().cpu().numpy()
+            #if maxim < 1:
+            #    maxim = 1
+            pred=pred.permute(1,0)
             self.wandb_run.log(
-                {name: wandb.Audio(pred.detach().cpu().numpy() / maxim, sample_rate=self.args.exp.sample_rate)},
+                {name: wandb.Audio(pred.detach().cpu().numpy() , sample_rate=self.args.exp.sample_rate)},
                 step=self.it)
 
             if self.args.logging.log_spectrograms:
@@ -121,19 +118,16 @@ class Tester():
     def sample_unconditional(self, mode):
         # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
         audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
-        shape = [self.args.tester.unconditional.num_samples, audio_len]
+        shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
         preds, noise_init = self.sampler.predict_unconditional(shape, self.device)
-        sigma_data = self.sampler.diff_params.sigma_data
 
         if self.use_wandb:
-            # preds=preds/torch.max(torch.abs(preds))
             self.log_audio(preds[0], f"unconditional+{self.sampler.T}")  # Just log first sample
-            # self.log_unconditional_metrics(preds) #But compute metrics on several
         else:
             try:
                 if not self.in_training:
                     for i in range(len(preds)):
-                        path_generated = utils_logging.write_audio_file(preds[i] * sigma_data,
+                        path_generated = utils_logging.write_audio_file(preds[i] ,
                                                                         self.args.exp.sample_rate,
                                                                         f"unconditional_{self.args.tester.wandb.pair_id}",
                                                                         path=self.paths["unconditional"])
@@ -145,118 +139,89 @@ class Tester():
 
         return preds
 
-    # ------------- CONDITIONAL SAMPLING ---------------#
+    def test_style(self, mode):
 
-    def run_inference(self, x_ref, params_dict, mode, blind=False, oracle=False, i=0):
+        assert len(self.test_set) != 0, "No samples found in test set"
 
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        #print("Files will be saved in: ", self.paths[mode])
 
-            self.prepare_directories(mode, unconditional=False, blind=blind, string=str(i))
+        for i, (sample_y, sample_x ) in enumerate(tqdm(self.test_set)):
 
-            path_dict = {
-                "original": self.paths[mode + "original"],
-                "degraded": self.paths[mode + "degraded"],
-                "reconstructed": self.paths[mode + "reconstructed"],
-                "operator_ref": self.paths[mode + "operator_ref"]
-            }
-            if blind:
-                path_dict["operator"] = self.paths[mode + "operator"]
+            sample_y = sample_y.to(self.device).float().unsqueeze(0)
+            sample_x = sample_x.to(self.device).float().unsqueeze(0)
+            print("sample_y", sample_y.shape, "sample_x", sample_x.shape)
 
-            # if original file exists, we skip
-            if os.path.exists(
-                    os.path.join(self.paths[mode + "original"], "x.wav")) and not self.args.tester.set.overwrite:
-                print("skipping", i)
-                return
+            preds=self.sample_conditional_style(mode, sample_x)
 
-            if isinstance(x_ref, list):
-                if self.args.tester.operator_ref is None:
-                    operator_ref=None
-                    y_ref=[]
-                    for i in range(len(x_ref)):
-                        y_ref.append(params_dict[i]["y"])
-                else:
-                    operator_ref=hydra.utils.instantiate(self.args.tester.operator_ref, params_dict=params_dict[0]) #assuming all the same
-                    y_ref=[]
-                    for i in range(len(x_ref)):
-                        y_ref.append(operator_ref.forward(x_ref[i]))
-                
-                x_ref=torch.stack(x_ref)
-                y_ref=torch.stack(y_ref)
-                x_ref=x_ref.view(x_ref.shape[0], -1).to(device)
-                y_ref=y_ref.view(y_ref.shape[0], -1).to(device)
-
+            if self.use_wandb:
+                self.log_audio(preds[0], f"pred_{i}_{self.sampler.T}")  # Just log first sample
+                self.log_audio(sample_x[0], f"original_dry+{i}")  # Just log first sample
+                #self.log_audio(sample_y[0], f"original_wet+{i}")  # Just log first sample
             else:
-                if self.args.tester.operator_ref is None:
-                    # account for PairedDataset, no operator_ref available
-                    operator_ref=None
-                    y_ref=params_dict["y"]
-                else:
-                    operator_ref=hydra.utils.instantiate(self.args.tester.operator_ref, params_dict=params_dict)
-                    y_ref=operator_ref.forward(x_ref)
+                raise NotImplementedError
+                try:
+                    if not self.in_training:
+                        for i in range(len(preds)):
+                            path_generated = utils_logging.write_audio_file(preds[i] * sigma_data,
+                                                                            self.args.exp.sample_rate,
+                                                                            f"unconditional_{self.args.tester.wandb.pair_id}",
+                                                                            path=self.paths["unconditional"])
+                            path_generated_noise = utils_logging.write_audio_file(noise_init[i], self.args.exp.sample_rate,
+                                                                                  f"noise_{self.args.tester.wandb.pair_id}",
+                                                                                  path=self.paths["unconditional"])
+                except:
+                    pass
 
-                x_ref=x_ref.view(1, -1).to(device)
-                y_ref=y_ref.view(1, -1).to(device)
+    def test(self, mode):
 
-            if self.args.tester.preprocessing is not None:
-                preprocesser=hydra.utils.instantiate(self.args.tester.preprocessing)
-                y_ref=preprocesser(y_ref)
+        assert len(self.test_set) != 0, "No samples found in test set"
 
-            #TODO: Maybe I want to adapt the operator parameters to something dependent of x_ref (e.g. SDR)
+        #print("Files will be saved in: ", self.paths[mode])
+
+        for i, (sample_y, sample_x ) in enumerate(tqdm(self.test_set)):
+
+            sample_y = sample_y.to(self.device).float().unsqueeze(0)
+            sample_x = sample_x.to(self.device).float().unsqueeze(0)
+            print("sample_y", sample_y.shape, "sample_x", sample_x.shape)
+
+            preds=self.sample_conditional(mode, sample_x)
+
+            if self.use_wandb:
+                self.log_audio(preds[0], f"pred_{i}_{self.sampler.T}")  # Just log first sample
+                self.log_audio(sample_y[0], f"original_wet+{i}")  # Just log first sample
+                self.log_audio(sample_x[0], f"original_dry+{i}")  # Just log first sample
+            else:
+                raise NotImplementedError
+                try:
+                    if not self.in_training:
+                        for i in range(len(preds)):
+                            path_generated = utils_logging.write_audio_file(preds[i] * sigma_data,
+                                                                            self.args.exp.sample_rate,
+                                                                            f"unconditional_{self.args.tester.wandb.pair_id}",
+                                                                            path=self.paths["unconditional"])
+                            path_generated_noise = utils_logging.write_audio_file(noise_init[i], self.args.exp.sample_rate,
+                                                                                  f"noise_{self.args.tester.wandb.pair_id}",
+                                                                                  path=self.paths["unconditional"])
+                except:
+                    pass
 
 
-            if blind:
-                #from operators.nablaFX_operator import NablaFXOperator as Nabk
-                #operator_blind=Nabk()
-                operator_blind = hydra.utils.instantiate(self.args.tester.operator_blind)
 
+    def sample_conditional(self, mode, cond):
+        # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
+        audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
+        #shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
+        shape=cond.shape
+        cond=self.sampler.diff_params.transform_forward(cond)
+        
+        preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device)
 
-            logging_callback = hydra.utils.instantiate(self.args.tester.logging_callback)
-            evaluation_callback = hydra.utils.instantiate(self.args.tester.evaluation_callback)
-            init_callback = hydra.utils.instantiate(self.args.tester.init_callback)
-    
-            my_init_callback = partial(init_callback, args=self.args)
-            my_logging_callback = logging_callback
-    
-
-            my_evaluation_callback = partial(evaluation_callback, x_test=None, y_test=None, args=self.args,
-                                         paths=path_dict, blind=blind)
-
-
-            pred = self.sampler.predict_conditional(y_ref, operator_blind=operator_blind if blind else operator_ref,
-                                                reference=x_ref, blind=blind, logging_callback=my_logging_callback,
-                                                init_callback=my_init_callback,
-                                                operator_ref=operator_ref,
-                                                evaluation_callback=my_evaluation_callback,
-                                                save_path=self.paths[mode],
-                                                oracle=oracle)
-            return pred
-
-    def test(self, mode, blind=False, single_example=True, oracle=False):
-
-        assert len(self.inference_train_set) != 0, "No samples found in test set"
-
-        print("Files will be saved in: ", self.paths[mode])
-
-        if single_example:
-
-            for i, (x_ref, params_dict) in enumerate(tqdm(self.inference_train_set)):
-    
-                self.run_inference(x_ref, params_dict, mode, blind=blind, oracle=oracle, i=i)
-        else:
-
-            x=[]
-            params_dict_list=[]
-            for i, (x_ref, params_dict) in enumerate(tqdm(self.inference_train_set)):
-                x.append(x_ref)
-                params_dict_list.append(params_dict)
-            
-            self.run_inference(x, params_dict_list, mode, blind=blind, oracle=oracle, i=0)
-
+        return preds
 
             
 
 
-    def prepare_directories(self, mode, unconditional=False, blind=False, string=None):
+    def prepare_directories(self, mode, unconditional=False, string=None):
 
         today = date.today()
         self.paths = {}
@@ -275,22 +240,15 @@ class Tester():
             string = ""
 
         if not unconditional:
-            self.paths[mode + "original"] = os.path.join(self.paths[mode], string + "original")
-            if not os.path.exists(self.paths[mode + "original"]):
-                os.makedirs(self.paths[mode + "original"])
-            self.paths[mode + "degraded"] = os.path.join(self.paths[mode], string + "degraded")
-            if not os.path.exists(self.paths[mode + "degraded"]):
-                os.makedirs(self.paths[mode + "degraded"])
-            self.paths[mode + "reconstructed"] = os.path.join(self.paths[mode], string + "reconstructed")
-            if not os.path.exists(self.paths[mode + "reconstructed"]):
-                os.makedirs(self.paths[mode + "reconstructed"])
-            self.paths[mode + "operator_ref"] = os.path.join(self.paths[mode], string + "operator_ref")
-            if not os.path.exists(self.paths[mode + "operator_ref"]):
-                os.makedirs(self.paths[mode + "operator_ref"])
-            if blind:
-                self.paths[mode + "operator"] = os.path.join(self.paths[mode], string + "operator")
-                if not os.path.exists(self.paths[mode + "operator"]):
-                    os.makedirs(self.paths[mode + "operator"])
+            self.paths[mode + "wet_original"] = os.path.join(self.paths[mode], string + "wet_original")
+            if not os.path.exists(self.paths[mode + "wet_original"]):
+                os.makedirs(self.paths[mode + "wet_original"])
+            self.paths[mode + "dry"] = os.path.join(self.paths[mode], string + "dry")
+            if not os.path.exists(self.paths[mode + "dry"]):
+                os.makedirs(self.paths[mode + "dry"])
+            self.paths[mode + "emb_estimate"] = os.path.join(self.paths[mode], string + "emb_estimate")
+            if not os.path.exists(self.paths[mode + "emb_estimate"]):
+                os.makedirs(self.paths[mode + "emb_estimate"])
 
     def save_experiment_args(self, mode):
         with open(os.path.join(self.paths[mode], ".argv"),
@@ -309,44 +267,17 @@ class Tester():
                     self.prepare_directories(m, unconditional=True)
                     self.save_experiment_args(m)
                 self.sample_unconditional(m)
-            elif m == "blind":
-                assert self.inference_train_set is not None
-                print("testing blind distortion ")
-                if not self.in_training:
-                    self.prepare_directories(m, unconditional=False, blind=True)
-                    self.save_experiment_args(m)
-
-                self.test(m, blind=True, single_example=True)
-            elif m == "blind_set":
-                assert self.inference_train_set is not None
-                print("testing blind distortion ")
-                if not self.in_training:
-                    self.prepare_directories(m, unconditional=False, blind=True)
-                    self.save_experiment_args(m)
-
-                self.test(m, blind=True, single_example=False)
-            elif m == "informed_set":
-                assert self.inference_train_set is not None
-                print("testing blind distortion ")
-                if not self.in_training:
-                    self.prepare_directories(m, unconditional=False, blind=False)
-                    self.save_experiment_args(m)
-
-                self.test(m, blind=False, single_example=False)
-            elif m == "informed":
-                assert self.inference_train_set is not None
-                print("testing informed distortion")
+            if m== "conditional_dry_vocals":
+                print("testing unconditional")
                 if not self.in_training:
                     self.prepare_directories(m, unconditional=False)
                     self.save_experiment_args(m)
-                self.test(m, blind=False, single_example=True)
-            elif m == "oracle":
-                assert self.inference_train_set is not None
-                print("testing oracle distortion ")
+                self.test(m)
+            if m== "style_conditional_dry_vocals":
+                print("testing unconditional")
                 if not self.in_training:
-                    self.prepare_directories(m, unconditional=False, blind=True)
+                    self.prepare_directories(m, unconditional=False)
                     self.save_experiment_args(m)
-
-                self.test(m, blind=True, single_example=True, oracle=True)
+                self.test_style(m)
             else:
                 print("Warning: unknown mode: ", m)

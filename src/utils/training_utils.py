@@ -1,4 +1,5 @@
 
+import math
 import torch
 import torchaudio
 import numpy as np
@@ -389,3 +390,81 @@ def normalize( xS, xT, xN, args, return_std=False):
 
         return xS, xT, xN
 
+
+#def find_time_offset(x: torch.Tensor, y: torch.Tensor, sign_shift=False):
+
+
+#def find_time_offset(y: torch.Tensor, x: torch.Tensor, margin=3000, check_sign_flip=False):
+#    x = x.double()
+#    y = y.double()
+#    N = x.size(-1)
+#    M = y.size(-1)
+#    #print("x",x.shape)
+#    #print("y",y.shape)
+#    #print(N,M)
+
+#    X = torch.fft.rfft(x, n=N + M - 1)
+
+#    Y = torch.fft.rfft(y, n=N + M - 1)
+#    print("X",X.shape, "Y",Y.shape, "x",x.shape, "y",y.shape)
+
+#    corr = torch.fft.irfft(X.conj() * Y)
+#    print("corr",corr.shape)
+
+#    shifts = torch.argmax(corr, dim=-1) - x.shape[-1]
+
+#    return shifts
+
+
+def align_batch(y, x, sample_rate):
+
+    x = x.double()
+    y = y.double()
+    N = x.size(-1)
+    M = y.size(-1)
+    y_device=y.device
+    x_device=x.device
+    y_dtype=y.dtype
+    x_dtype=x.dtype
+
+    X = torch.fft.rfft(x, n=N + M - 1)
+    X_flipped=torch.fft.rfft(x*-1, n=N + M - 1)
+
+    Y = torch.fft.rfft(y, n=N + M - 1)
+
+    corr = torch.fft.irfft(X.conj() * Y)
+    corr_flipped = torch.fft.irfft(X_flipped.conj() * Y)
+
+    corr=corr.sum(dim=1)
+    corr_flipped=corr_flipped.sum(dim=1)
+
+    #print("corr",corr.shape)
+    shifts = torch.argmax(corr, dim=-1)
+
+    shifts_flipped = torch.argmax(corr_flipped, dim=-1)
+#    corr_values_flipped= corr_flipped[...,shifts_flipped]
+    #shifts= torch.where(shifts >= N, shifts - N - M + 1, shifts)
+    #shifts_flipped= torch.where(shifts_flipped >= N, shifts_flipped - N - M + 1, shifts_flipped)
+
+    shifts=shifts.to(torch.int64)
+            
+    result=[]
+    for i in range(len(shifts)):
+        corr_value=corr[i, shifts[i]]
+        corr_value_flipped=corr_flipped[i, shifts_flipped[i]]
+        if corr_value < corr_value_flipped:
+            shift=shifts_flipped[i].item()
+            if shift >=N:
+                shift = shift - N - M + 1
+            result.append(torch.roll(x[i]*-1, shifts=shift, dims=-1) )
+        else:
+            shift=shifts[i].item()
+            if shift >=N:
+                shift = shift - N - M + 1
+            result.append(torch.roll(x[i], shifts=shift, dims=-1) )
+
+
+    x= torch.stack(result)
+    #x = torch.stack([torch.roll(x[i], shifts=shifts[i].item(), dims=-1) for i in range(x.shape[0])])
+
+    return y.to(y_device).to(y_dtype), x.to(x_device).to(x_dtype)

@@ -315,6 +315,7 @@ class DiffusionTransformer(nn.Module):
             prepend_cond_mask = prepend_cond_mask.bool()
 
         # CFG dropout
+        # Eloi: I am not using this, doing the dropout in diff_params, outside that class
         if cfg_dropout_prob > 0.0:
             if cross_attn_cond is not None:
                 null_embed = torch.zeros_like(cross_attn_cond, device=cross_attn_cond.device)
