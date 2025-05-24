@@ -11,6 +11,9 @@ def worker_init_fn(worker_id):
 
 
 def _main(args):
+
+    print(f"Current Working Directory: {os.getcwd()}")
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     global __file__
@@ -55,7 +58,12 @@ def _main(args):
 
     # Trainer
     #print(args.exp.trainer)
-    trainer = hydra.utils.instantiate(args.exp.trainer, args, train_loader, network, diff_params, tester, device, distributed=False)  # This works
+
+    #trainer = hydra.utils.instantiate(args.exp.trainer, args, train_loader, network, diff_params, tester, device, distributed=False)  # This works
+    print(f"Current Working Directory: {os.getcwd()}")
+
+    from training.trainer_ddp import Trainer
+    trainer = Trainer(args.exp.trainer, args, train_loader, network, diff_params, tester, device, distributed=False)  # This works
 
     # Print options.
     print()

@@ -21,6 +21,8 @@ import torch.distributed as dist
 class Trainer():
     def __init__(self, args=None, dset=None, network=None, diff_params=None, tester=None, device='cpu', rank=0, world_size=1, distributed=True):
 
+        print("HELLO FROM TRAINER") 
+
         assert args is not None, "args dictionary is None"
         self.args = args
 
