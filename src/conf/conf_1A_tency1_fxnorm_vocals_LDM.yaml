@@ -1,15 +1,15 @@
 
 defaults:
-  - dset: tencymastering_vocals
-  - network: Latent_DiT_SAO_crossatt
-  - diff_params: edm_style_AFxRep_Music2Latent4 
+  - dset: tency1_vocals_fx_norm
+  - network: Latent_DiT_SAO
+  - diff_params: edm_LDM_Music2Latent4
   - tester: conditional_dry_vocals
   - logging: base_logging
 
-model_dir: "/data4/eloi/experiments/1A_tencymastering_vocals"
+model_dir: "/data4/eloi/experiments/1A_tency1_fxnorm_vocals"
 
 exp:
-  exp_name: "1A_tencymastering_vocals" #name of the experiment
+  exp_name: "1A_tency1_fxnorm_vocals" #name of the experiment
 
   trainer:
     _target_: "training.trainer_ddp.Trainer"
@@ -33,7 +33,7 @@ exp:
   batch_size: 8
 
   # Performance-related.
-  num_workers: 4  
+  num_workers: 8
 
   # I/O-related. moved to logging
   seed: 1 # random seed

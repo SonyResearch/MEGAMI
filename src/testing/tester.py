@@ -206,6 +206,17 @@ class Tester():
                     pass
 
 
+    def sample_conditional_style(self, mode, cond):
+        # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
+        audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
+        #shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
+        shape=self.args.tester.shape
+
+        cond=self.sampler.diff_params.transform_forward(cond)
+        
+        preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device)
+
+        return preds
 
     def sample_conditional(self, mode, cond):
         # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
