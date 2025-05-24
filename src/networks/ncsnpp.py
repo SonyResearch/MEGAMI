@@ -65,6 +65,7 @@ class NCSNpp(nn.Module):
         image_size = 256,
         embedding_type = 'fourier',
         input_channels = 2,
+        output_channels = 2,
         spatial_channels = 1,
         dropout = .0,
         centered = True,
@@ -108,10 +109,11 @@ class NCSNpp(nn.Module):
         combine_method = progressive_combine.lower()
         combiner = functools.partial(Combine, method=combine_method)
         self.input_channels = input_channels
-        self.spatial_channels = spatial_channels
-        self.total_channels = self.input_channels * self.spatial_channels
+        #self.spatial_channels = spatial_channels
+        self.total_channels = self.input_channels 
+        self.output_channels = output_channels
 
-        self.output_layer = nn.Conv2d(self.total_channels, 2*self.spatial_channels, 1)
+        self.output_layer = nn.Conv2d(self.total_channels, self.output_channels, 1)
 
         modules = []
 
@@ -278,7 +280,7 @@ class NCSNpp(nn.Module):
     def add_argparse_args(parser):
         return parser
 
-    def forward(self, x, time_cond=None):
+    def forward(self, x, time_cond=None, input_concat_cond=None):
         """
         - x: b,2*D,F,T: contains x and y OR x: b,D,F,T contains only x
         """
@@ -289,13 +291,16 @@ class NCSNpp(nn.Module):
         m_idx = 0
 
         # Convert real and imaginary parts into channel dimensions
-        x_chans = []
-        for chan in range(self.spatial_channels):
-            x_chans.append(torch.cat([ 
-                torch.cat([x[:,[chan+in_chan],:,:].real, x[:,[chan+in_chan],:,:].imag ], dim=1) for in_chan in range(self.input_channels // 2)],
-                    dim=1)
-                )
-        x = torch.cat(x_chans, dim=1) #4*D
+        #x_chans = []
+        #for chan in range(self.spatial_channels):
+        #    x_chans.append(torch.cat([ 
+        #        torch.cat([x[:,[chan+in_chan],:,:].real, x[:,[chan+in_chan],:,:].imag ], dim=1) for in_chan in range(self.input_channels // 2)],
+        #            dim=1)
+        #        )
+
+        #x = torch.cat(x_chans, dim=1) #4*D
+
+        x=x
 
         if self.time_conditional and time_cond is not None:
 
@@ -453,7 +458,7 @@ class NCSNpp(nn.Module):
         h = self.output_layer(h) #b,D=1,C_out,T
         h = torch.reshape(h, (h.size(0), 2, self.spatial_channels, h.size(2), h.size(3)))
         h = torch.permute(h, (0, 2, 3, 4, 1)).contiguous() # b,2,D,F,T -> b,D,F,T,2
-        h = torch.view_as_complex(h) #b,D,F,T
+        #h = torch.view_as_complex(h) #b,D,F,T
         return h
 
 
@@ -502,13 +507,23 @@ class NCSNppTime(NCSNpp):
         sig=einops.rearrange(sig, "(b c) t -> b c t", c=c)
         return sig[..., :length]
 
-    def forward(self, x, time_cond=None):
+    def forward(self, x, time_cond=None, input_concat_cond=None):
 
         #print("x.shape, time_cond.shape", x.shape, time_cond.shape)
         time_cond=time_cond.squeeze(-1)
         B,C,T=x.shape
 
-        x_spec=self.stft(x)
+        if input_concat_cond is not None:
+            #print("input_concat_cond.shape", input_concat_cond.shape)
+            assert input_concat_cond.shape==x.shape, "input_concat_cond must have the same shape as x"
+            input_stft=torch.cat([self.stft(x), self.stft(input_concat_cond)], dim=0)
+            res_stft=self.stft(input_stft)
+
+            x_spec=res_stft[:B]
+            cond_spec=res_stft[B:].abs()
+        else:
+            x_spec=self.stft(x)
+
         if x_spec.shape[-2] % 16 != 0:
             N_pad=16-x_spec.shape[-2] % 16
             x_spec = torch.nn.functional.pad(x_spec, (0, 16 - N_pad, 0, 0), mode="constant", value=0)
@@ -517,7 +532,21 @@ class NCSNppTime(NCSNpp):
         #print("N_pad", N_pad)
         #print("x_spec.shape", x_spec.shape)
 
-        x_spec=super().forward(x_spec, time_cond=time_cond)
+        #Convert real and imaginary parts into channel dimensions
+        x_chans = []
+        for chan in range(self.spatial_channels):
+            x_chans.append(torch.cat([ 
+                torch.cat([x[:,[chan+in_chan],:,:].real, x[:,[chan+in_chan],:,:].imag ], dim=1) for in_chan in range(self.input_channels // 2)],
+                    dim=1)
+                )
+
+        x_spec_in = torch.cat(x_chans, dim=1) #4*D
+
+        if input_concat_cond is not None:
+            x_spec_in = torch.cat([x_spec_in, cond_spec], dim=1)
+
+        x_spec=super().forward(x_spec_in, time_cond=time_cond)
+        x_spec = torch.view_as_complex(x_spec)  # Convert back to complex
 
         x_spec=x_spec[..., :x_spec.shape[-2]-N_pad, :]
 

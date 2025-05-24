@@ -156,3 +156,46 @@ class EDM(SDE):
     def normalize(self, x):
         return x
         
+    def loss_fn(self, net, sample=None, context=None, *args, **kwargs):
+        """
+        Loss function, which is the mean squared error between the denoised latent and the clean latent
+        Args:
+            net (nn.Module): Model of the denoiser
+            x (Tensor): shape: (B,T) Intermediate noisy latent to denoise
+            sigma (float): noise level (equal to timestep is sigma=t, which is our default)
+        """
+        y=sample
+
+        t = self.sample_time_training(y.shape[0]).to(y.device)
+
+
+        input, target, cnoise = self.prepare_train_preconditioning(y, t)
+
+
+
+        #print("input",input.shape,"cnoise", cnoise.shape)
+
+        if len(cnoise.shape) == 1:
+            #dirty patch
+            cnoise = cnoise.unsqueeze(-1)
+
+        if input.ndim==2:
+            input=input.unsqueeze(1)
+
+        estimate = net(input, cnoise, input_concat_cond=context)
+        
+        if target.ndim==2 and estimate.ndim==3:
+            estimate=estimate.squeeze(1)
+
+        error = estimate - target
+
+        #apply this on the trainer
+        #try:
+        #    #this will only happen if the model is cqt-based, if it crashes it is normal
+        #    if self.args.net.use_cqt_DC_correction:
+        #        error=net.CQTransform.apply_hpf_DC(error) #apply the DC correction to the error as we dont want to propagate the DC component of the error as the network is discarding it. It also applies for the nyquit frequency, but this is less critical.
+        #except:
+        #    pass 
+
+        #here we have the chance to apply further emphasis to the error, as some kind of perceptual frequency weighting could be
+        return error**2, self._std(t)
