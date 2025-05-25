@@ -1,7 +1,7 @@
 
 defaults:
   - dset: tencymastering_vocals
-  - network: ncsnpp_44k_cond
+  - network: ncsnpp_44k_cond_v2
   - diff_params: edm
   - tester: conditional_dry_vocals
   - logging: base_logging
