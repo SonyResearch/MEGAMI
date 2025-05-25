@@ -119,7 +119,7 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
             path=os.path.join(base_path,subdir)
             id_list.extend(glob.glob(os.path.join(path,"*")))
 
-        #print("id_list", len(id_list))
+        print("id_list", len(id_list))
         def filter_ids(path):
             id_track=path.split("/")[-1]
             partition=path.split("/")[-2]
@@ -130,11 +130,11 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
                 return True
 
         id_list=[x for x in id_list if filter_ids(x)]
-        #print("id_list after filtering", len(id_list))
+        print("id_list after filtering", len(id_list))
         assert len(id_list)>0, "No files found in the dataset"
 
         self.pair_list=process_id_list_lead_vocal(id_list)
-        #print("pair_list", len(self.pair_list))
+        print("pair_list", len(self.pair_list))
         self.segment_length=segment_length
         self.fs=fs
 

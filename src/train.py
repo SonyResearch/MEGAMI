@@ -63,7 +63,8 @@ def _main(args):
     print(f"Current Working Directory: {os.getcwd()}")
 
     from training.trainer_ddp import Trainer
-    trainer = Trainer(args.exp.trainer, args, train_loader, network, diff_params, tester, device, distributed=False)  # This works
+    #print("args", args)
+    trainer = Trainer( args=args, dset=train_loader, network=network, diff_params=diff_params, tester=tester, device=device, distributed=False)  # This works
 
     # Print options.
     print()

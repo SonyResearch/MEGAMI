@@ -37,7 +37,7 @@ class EDM(SDE):
 
         return t
 
-    def sample_prior(self, shape=None, t=None):
+    def sample_prior(self, shape=None, t=None, dtype=None):
         """
         Just sample some gaussian noise, nothing more
         Args:
@@ -115,7 +115,7 @@ class EDM(SDE):
 
 
 
-    def denoiser(self, xn , net, t, *args, **kwargs):
+    def denoiser(self, xn , net, t, cond=None, *args, **kwargs):
         """
         This method does the whole denoising step, which implies applying the model and the preconditioning
         Args:
@@ -123,6 +123,7 @@ class EDM(SDE):
             model (nn.Module): Model of the denoiser
             sigma (float): noise level (equal to timestep is sigma=t, which is our default)
         """
+        print("xn",xn.shape)
         sigma = self._std(t).unsqueeze(-1)
         sigma = sigma.view(*sigma.size(), *(1,)*(xn.ndim - sigma.ndim))
 
@@ -138,9 +139,9 @@ class EDM(SDE):
             cnoise = cnoise.view(xn.shape[0],).unsqueeze(-1)
 
 
-        #print(xn.shape, cskip.shape, cout.shape, cin.shape, cnoise.shape)
 
-        x_hat=cskip * xn + cout * net((cin * xn).to(torch.float32), cnoise.to(torch.float32)).to(xn.dtype)  #this will crash because of broadcasting problems, debug later!
+        x_hat=cskip * xn + cout * net((cin * xn).to(torch.float32), cnoise.to(torch.float32), input_concat_cond=cond).to(xn.dtype)  #this will crash because of broadcasting problems, debug later!
+
 
         #try:
         #    if net.CQTransform is not None:
@@ -199,3 +200,19 @@ class EDM(SDE):
 
         #here we have the chance to apply further emphasis to the error, as some kind of perceptual frequency weighting could be
         return error**2, self._std(t)
+    
+    def transform_forward(self,x,*args, **kwargs):
+        """
+        Transform the input x to the forward diffusion process
+        Args:
+            x (Tensor): shape: (B,T) Input to transform
+        """
+        return x
+
+    def transform_inverse(self, x, *args, **kwargs):
+        """
+        Transform the input x to the inverse diffusion process
+        Args:
+            x (Tensor): shape: (B,T) Input to transform
+        """
+        return x

@@ -447,17 +447,18 @@ class NCSNpp(nn.Module):
         else:
             h = self.act(modules[m_idx](h))
             m_idx += 1
-            #print("pre h.shape", h.shape)
+            print("pre h.shape", h.shape)
             h = modules[m_idx](h)
-            #print("post h.shape", h.shape)
+            print("post h.shape", h.shape)
             m_idx += 1
 
         assert m_idx == len(modules)
 
         # Convert to complex number
         h = self.output_layer(h) #b,D=1,C_out,T
-        h = torch.reshape(h, (h.size(0), 2, self.spatial_channels, h.size(2), h.size(3)))
-        h = torch.permute(h, (0, 2, 3, 4, 1)).contiguous() # b,2,D,F,T -> b,D,F,T,2
+
+        #print("h.shape", h.shape)
+
         #h = torch.view_as_complex(h) #b,D,F,T
         return h
 
@@ -516,7 +517,7 @@ class NCSNppTime(NCSNpp):
         if input_concat_cond is not None:
             #print("input_concat_cond.shape", input_concat_cond.shape)
             assert input_concat_cond.shape==x.shape, "input_concat_cond must have the same shape as x"
-            input_stft=torch.cat([self.stft(x), self.stft(input_concat_cond)], dim=0)
+            input_stft=torch.cat([x, input_concat_cond], dim=0)
             res_stft=self.stft(input_stft)
 
             x_spec=res_stft[:B]
@@ -534,23 +535,50 @@ class NCSNppTime(NCSNpp):
 
         #Convert real and imaginary parts into channel dimensions
         x_chans = []
-        for chan in range(self.spatial_channels):
-            x_chans.append(torch.cat([ 
-                torch.cat([x[:,[chan+in_chan],:,:].real, x[:,[chan+in_chan],:,:].imag ], dim=1) for in_chan in range(self.input_channels // 2)],
-                    dim=1)
-                )
+        C= x_spec.shape[1]  # C = 2 * D
+        #for chan in range(C):
+        #    x_chans.append(torch.cat([ 
+        #        torch.cat([x[:,[chan+in_chan],:,:].real, x[:,[chan+in_chan],:,:].imag ], dim=1) for in_chan in range(self.input_channels // 2)],
+        #            dim=1)
+        #        )
+        for i in range(C):
+            x_i= x_spec[:, i, :, :].unsqueeze(1)  # b,1,F,T
+            x_chans.append(torch.cat([x_i.real, x_i.imag], dim=1))  # b,2,F,T
 
         x_spec_in = torch.cat(x_chans, dim=1) #4*D
 
         if input_concat_cond is not None:
             x_spec_in = torch.cat([x_spec_in, cond_spec], dim=1)
 
+        #print("x_spec_in.shape", x_spec_in.shape)
         x_spec=super().forward(x_spec_in, time_cond=time_cond)
-        x_spec = torch.view_as_complex(x_spec)  # Convert back to complex
+
+        #print("x_spec.shape", x_spec.shape)
+
+        x_l=x_spec[:,0:2,:,:]  # b,1,F,T
+        x_r=x_spec[:,2:4,:,:]
+
+
+        #print("x_l.shape, x_r.shape", x_l.shape, x_r.shape)
+
+        x_l = torch.reshape(x_l, (x_l.size(0), 2, 1, x_l.size(2), x_l.size(3)))
+        x_l = torch.permute(x_l, (0, 2, 3, 4, 1)).contiguous() # b,2,D,F,T -> b,D,F,T,2
+
+        x_r = torch.reshape(x_r, (x_r.size(0), 2, 1, x_r.size(2), x_r.size(3)))
+        x_r = torch.permute(x_r, (0, 2, 3, 4, 1)).contiguous() # b,2,D,F,T -> b,D,F,T,2
+
+        x_l = torch.view_as_complex(x_l)  # Convert back to complex
+        x_r = torch.view_as_complex(x_r)
+        #print("x_l.shape, x_r.shape", x_l.shape, x_r.shape)
+        x_spec = torch.cat([x_l, x_r], dim=1)
 
         x_spec=x_spec[..., :x_spec.shape[-2]-N_pad, :]
 
+        #print("x_spec.shape", x_spec.shape)
+
         x_time=self.istft(x_spec, length=T)
+
+        #print("x_time.shape", x_time.shape)
 
         return x_time
 

@@ -28,7 +28,7 @@ init_scale: 0.
 fourier_scale: 16
 image_size: 256
 embedding_type: 'fourier'
-input_channels: 5
+input_channels: 6
 output_channels: 4
 spatial_channels: 1
 dropout: 0

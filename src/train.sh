@@ -28,10 +28,10 @@ MASTER_PORT=29500
 
 # Launch the training script with torchrun for DDP
 torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT train_ddp.py --config-name=$conf  \
-  model_dir=$PATH_EXPERIMENT \
-  exp.optimizer.lr=1e-4 \
-  exp.batch_size=4 \
+	  model_dir=$PATH_EXPERIMENT \
+	    exp.optimizer.lr=1e-4 \
+	      exp.batch_size=4 \
 
-#python train.py --config-name=$conf  \
+	      #python train.py --config-name=$conf  \
 #  model_dir=$PATH_EXPERIMENT \
 #  logging=base_logging_debug \
