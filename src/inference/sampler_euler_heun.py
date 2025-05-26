@@ -130,6 +130,7 @@ class SamplerEulerHeun(Sampler):
             self,
             shape,  # observations (lowpssed signal) Tensor with shape ??
             device,  # lambda function
+            dtype=torch.float32,  # data type
             blind=False
     ):
 
@@ -137,11 +138,11 @@ class SamplerEulerHeun(Sampler):
         t = self.create_schedule().to(device).to(torch.float32)
 
 
-        shape_example, dtype = self.get_domain_shape(shape, device)
+        #shape_example, dtype = self.get_domain_shape(shape, device)
         #print("shape_example", shape_example, dtype)
 
         # sample prior
-        x = self.diff_params.sample_prior(t=t[0], shape=shape_example, dtype=dtype)
+        x = self.diff_params.sample_prior(t=t[0], shape=shape, dtype=dtype)
 
         #print("xT", x.shape, shape_example, x.dtype, dtype)
 

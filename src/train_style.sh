@@ -23,10 +23,10 @@ mkdir -p $PATH_EXPERIMENT
 
 
 # Number of GPUs to use
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 NUM_GPUS=1
 #MASTER_PORT=29500
-MASTER_PORT=29501
+MASTER_PORT=29500
 
 # Launch the training script with torchrun for DDP
 #torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT train_ddp.py --config-name=$conf  \
@@ -36,4 +36,5 @@ MASTER_PORT=29501
 
 python train.py --config-name=$conf  \
   model_dir=$PATH_EXPERIMENT \
-  logging=base_logging_debug \
+  logging=base_logging \
+  exp.compile=True \

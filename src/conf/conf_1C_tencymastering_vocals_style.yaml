@@ -30,10 +30,10 @@ exp:
   scheduler_step_size: 60000
   scheduler_gamma: 0.8
 
-  batch_size: 8
+  batch_size: 16
 
   # Performance-related.
-  num_workers: 4  
+  num_workers: 8
 
   # I/O-related. moved to logging
   seed: 1 # random seed

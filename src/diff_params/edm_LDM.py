@@ -19,7 +19,8 @@ class EDM_LDM(SDE):
         type,
         AE_type,
         sde_hp,
-        cfg_dropout_prob
+        cfg_dropout_prob,
+        default_shape
         ):
 
         super().__init__(type, sde_hp)
@@ -28,6 +29,8 @@ class EDM_LDM(SDE):
         self.sigma_min = self.sde_hp.sigma_min
         self.sigma_max = self.sde_hp.sigma_max
         self.rho = self.sde_hp.rho
+
+        self.default_shape = default_shape
 
         try:
             self.max_t= self.sde_hp.max_sigma

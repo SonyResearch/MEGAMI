@@ -1,2 +1,7 @@
 src/outputs
 src/audio_examples
+
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class

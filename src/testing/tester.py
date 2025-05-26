@@ -210,7 +210,7 @@ class Tester():
         # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
         audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
         #shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
-        shape=self.args.tester.shape
+        shape=self.sampler.diff_params.default_shape
 
         cond=self.sampler.diff_params.transform_forward(cond)
         

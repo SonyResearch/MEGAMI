@@ -14,3 +14,6 @@ sde_hp:
   sigma_max: 100
   max_sigma: 100
   rho: 10
+
+
+shape: [1, 512, 16]

@@ -11,7 +11,9 @@ class EDM(SDE):
 
     def __init__(self,
         type,
-        sde_hp):
+        sde_hp,
+        default_shape,
+        ):
 
         super().__init__(type, sde_hp)
 
@@ -19,6 +21,8 @@ class EDM(SDE):
         self.sigma_min = self.sde_hp.sigma_min
         self.sigma_max = self.sde_hp.sigma_max
         self.rho = self.sde_hp.rho
+
+        self.default_shape = torch.Size(default_shape)
 
         try:
             self.max_t= self.sde_hp.max_sigma

@@ -1,4 +1,8 @@
 import torch
+import torchaudio
+from importlib import import_module
+import yaml
+import os
 import einops
 import numpy as np
 
@@ -18,10 +22,11 @@ class EDM_Style(SDE):
     def __init__(self,
         type,
         AE_type,
-        FXenc_type,
+        FXenc_args,
         sample_rate,
         sde_hp,
-        cfg_dropout_prob
+        cfg_dropout_prob, 
+        default_shape
         ):
 
         super().__init__(type, sde_hp)
@@ -30,6 +35,8 @@ class EDM_Style(SDE):
         self.sigma_min = self.sde_hp.sigma_min
         self.sigma_max = self.sde_hp.sigma_max
         self.rho = self.sde_hp.rho
+
+        self.default_shape=torch.Size(default_shape)
 
         try:
             self.max_t= self.sde_hp.max_sigma
@@ -118,14 +125,63 @@ class EDM_Style(SDE):
         else:
             raise NotImplementedError("Only SAO VAE is implemented for now")
 
-        if FXenc_type=="AFxRep":
-            from st_ito.utils import load_param_model, get_param_embeds
-            model = load_param_model(use_gpu=True)
+        if FXenc_args.type=="AFxRep":
+
+            ckpt_path=FXenc_args.ckpt_path
+            config_path = os.path.join(os.path.dirname(ckpt_path), "config.yaml")
+        
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+        
+            encoder_configs = config["model"]["init_args"]["encoder"]
+        
+            module_path, class_name = encoder_configs["class_path"].rsplit(".", 1)
+            module_path = module_path.replace("lcap", "utils.st_ito")
+
+            print("module path", module_path, "class name", class_name)
+            module = import_module(module_path)
+
+            model = getattr(module, class_name)(**encoder_configs["init_args"])
+        
+            checkpoint = torch.load(ckpt_path, map_location="cpu")
+        
+            # load state dicts
+            state_dict = {}
+            for k, v in checkpoint["state_dict"].items():
+                if k.startswith("encoder"):
+                    state_dict[k.replace("encoder.", "", 1)] = v
+        
+            model.load_state_dict(state_dict)
+            model.eval()
+        
+            model.to(self.device)
+
 
             def fxencode_fn(x):
-                embed_dict = get_param_embeds(x, model, sample_rate)
-                embed_all=torch.cat([embed_dict["mid"], embed_dict["side"]], dim=-1)
-                return embed_all
+                if sample_rate != 48000:
+                    x=torchaudio.functional.resample(x, sample_rate, 48000)
+
+                bs= x.shape[0]
+                #peak normalization. I do it because this is what ST-ITO get_param_embeds does. Not sure if it is good that this representation is invariant to gain
+                for batch_idx in range(bs):
+                    x[batch_idx, ...] /= x[batch_idx, ...].abs().max().clamp(1e-8)
+
+                mid_embeddings, side_embeddings = model(x)
+
+                # check for nan
+                if torch.isnan(mid_embeddings).any():
+                    print("Warning: NaNs found in mid_embeddings")
+                    mid_embeddings = torch.nan_to_num(mid_embeddings)
+                elif torch.isnan(side_embeddings).any():
+                    print("Warning: NaNs found in side_embeddings")
+                    side_embeddings = torch.nan_to_num(side_embeddings)
+
+                mid_embeddings = torch.nn.functional.normalize(mid_embeddings, p=2, dim=-1)
+                side_embeddings = torch.nn.functional.normalize(side_embeddings, p=2, dim=-1)
+
+                embed=torch.cat([mid_embeddings, side_embeddings], dim=-1)
+
+                return embed
             
             self.FXenc=fxencode_fn
             self.FXenc_compiled=torch.compile(fxencode_fn)
@@ -286,6 +342,9 @@ class EDM_Style(SDE):
         if input.ndim==2:
             input=input.unsqueeze(1)
 
+        context=einops.rearrange(context, "b c t -> b t c") if context is not None else None
+        #print("input shape", input.shape, "target shape", target.shape, "cnoise shape", cnoise.shape, "context shape", context.shape if context is not None else None)
+
         estimate = net(input, cnoise, cross_attn_cond=context)
         #estimate = net(input, cnoise, input_concat_cond=None)
         
@@ -325,6 +384,7 @@ class EDM_Style(SDE):
         #print(xn.shape, cskip.shape, cout.shape, cin.shape, cnoise.shape)
         x_in=cin*xn
 
+        cond=einops.rearrange(cond, "b c t -> b t c") if cond is not None else None
 
         #x_in=self.unflatten(x_in)
         net_out=net(x_in, cnoise.to(torch.float32), cross_attn_cond=cond, cfg_scale=cfg_scale)  #this will crash because of broadcasting problems, debug later!
