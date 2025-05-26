@@ -12,3 +12,5 @@ sde_hp:
   sigma_max: 10
   rho: 10
   max_sigma: 10
+
+default_shape: [1, 2, 262144]

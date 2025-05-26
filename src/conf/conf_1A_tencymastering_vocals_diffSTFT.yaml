@@ -1,12 +1,18 @@
 
 defaults:
-  - dset: tencymastering_vocals
-  - network: ncsnpp_44k_cond
+  - dset: tencymastering_vocals_loudnorm_server5
+  - network: ncsnpp_44k_cond_v2
   - diff_params: edm
   - tester: conditional_dry_vocals
   - logging: base_logging
 
-model_dir: "/data4/eloi/experiments/1A_tencymastering_vocals"
+model_dir: "/data4/eloi/experiments/1A_tencymastering_vocals_diffSTFT"
+dset:
+  train:
+    segment_length: 262144  # Replace with your desired value
+  validation:
+    segment_length: 262144  # If you want to change validation segment length too
+
 
 exp:
   exp_name: "1A_tencymastering_vocals" #name of the experiment

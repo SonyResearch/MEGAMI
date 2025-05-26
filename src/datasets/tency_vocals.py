@@ -11,6 +11,7 @@ from pathlib import Path
 from utils.data_utils import read_wav_segment, get_audio_length
 import torch.distributed as dist
 
+import pickle
 
 
  
@@ -88,6 +89,39 @@ def process_id_list_lead_vocal(
     return results
 
 
+def check_side_energy( x_dry, dry_file, side_energy_threshold=-30):
+            if x_dry.size(0) > 1:
+                left = x_dry[0]
+                right = x_dry[1]
+                left = left / left.max()
+                right = right / right.max()
+                side = (left - right) * 0.707
+                side_energy = 20*torch.log10(side.abs().max()).item()
+            else:
+                side_energy = -torch.inf
+            
+            if side_energy > side_energy_threshold:
+                print(f"Skip {dry_file} because of high side energy"+str(side_energy))
+                return False
+            else:
+                return True
+
+
+def load_audio( file, start, end, stereo=True):
+
+            x, fs=read_wav_segment(file, start, end)
+            if stereo:
+                if len(x.shape)==1:
+                    #print( "dry not stereo , doubling channels", x_dry.shape)
+                    x=x[:,np.newaxis]
+                    x= np.concatenate((x, x), axis=-1)
+                elif len(x.shape)==2 and x.shape[-1]==1:
+                    #print( "dry not stereo , doubling channels", x_dry.shape)
+                    x = np.concatenate((x, x), axis=-1)
+
+            x=torch.from_numpy(x).permute(1,0)
+
+            return x, fs
 
 class TencyMastering_Vocals(torch.utils.data.IterableDataset):
     def __init__(self,
@@ -99,6 +133,7 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
         skip_list=None,
         normalize_params=None,
         align=False,
+        align_mode=None,
         stereo=True,
         RMS_threshold_dB=-40,
         seed=42,
@@ -139,6 +174,10 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
         self.fs=fs
 
         self.align=align
+        if self.align:
+            assert align_mode in ["cross_correlation", "pickle"], "align_mode must be either 'cross_correlation' or 'pickle'"
+            self.align_mode=align_mode
+
         self.normalize_mode=normalize_params.normalize_mode
 
         self.stereo=stereo
@@ -178,6 +217,7 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
 
         #raise ValueError("stop here")
 
+
     def __iter__(self):
         while True:
             try:
@@ -195,57 +235,69 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
                 start=np.random.randint(0,total_frames-self.segment_length)
                 end=start+ self.segment_length
 
-                x_dry, fs=read_wav_segment(dry_file, start, end)
-                assert fs==self.fs, "wrong sampling rate: {}".format(fs)
-                if self.stereo:
-                    if len(x_dry.shape)==1:
-                        #print( "dry not stereo , doubling channels", x_dry.shape)
-                        x_dry=x_dry[:,np.newaxis]
-                        x_dry = np.concatenate((x_dry, x_dry), axis=-1)
-                    elif len(x_dry.shape)==2 and x_dry.shape[-1]==1:
-                        #print( "dry not stereo , doubling channels", x_dry.shape)
-                        x_dry = np.concatenate((x_dry, x_dry), axis=-1)
+                if self.align and self.align_mode=="pickle":
+                        #aligning using a pickle file with a dictionary, as done for GRAFx
 
-                x_dry=torch.from_numpy(x_dry).permute(1,0)
-    
-                if x_dry.size(0) > 1:
-                    left = x_dry[0]
-                    right = x_dry[1]
-                    left = left / left.max()
-                    right = right / right.max()
-                    side = (left - right) * 0.707
-                    side_energy = 20*torch.log10(side.abs().max()).item()
+                        #dry_file is path/sond_id/dry/track.wav
+                        #pickle_file is path/song_id/alignment.pickle
+
+                        alignment_file=dry_file.parent.parent / "alignment.pickle"
+                        alignment_data = pickle.load(open(alignment_file, "rb"))
+
+                        dry_align=alignment_data.get("dry_alignment",0)
+                        #multi_align=alignment_data.get("multi_alignment",0)
+                        print("dry_align", dry_align)
+
+                        dry_start = start - dry_align
+                        dry_end= dry_start + self.segment_length
                 else:
-                    side_energy = -torch.inf
+                    dry_start = start
+                    dry_end= dry_start + self.segment_length
+
+
+                out=load_audio(dry_file, dry_start, dry_end, stereo=self.stereo)
+                if out is None:
+                    continue
+                else:
+                    x_dry, fs=out
+
+                assert fs==self.fs, "wrong sampling rate: {}".format(fs)
                 
-                if side_energy > self.side_energy_threshold:
-                    print(f"Skip {dry_file} because of high side energy"+str(side_energy))
+                if not check_side_energy(x_dry, dry_file, side_energy_threshold=self.side_energy_threshold):
                     continue
 
+                out= load_audio(wet_file, start, end, stereo=self.stereo)
+                if out is None:
+                    continue    
+                else:
+                    y_wet, fs=out
 
-                y_wet, fs=read_wav_segment(wet_file, start, end)
                 assert fs==self.fs, "wrong sampling rate: {}".format(fs)
-                if self.stereo:
-                    assert y_wet.shape[-1]==2, "not stereo"
-                y_wet=torch.from_numpy(y_wet).permute(1,0)
 
                 RMS_dB=self.get_RMS(y_wet.mean(0))
                 if RMS_dB<self.RMS_threshold_dB:
-                    #print(r"skip wet file because of low RMS (silence) {}".format(RMS_dB))
                     continue
 
-
                 if self.align:
-                    #do that on GPU if it is slow
-                    shifts = find_time_offset(x_dry.mean(0), y_wet.mean(0), margin=3000).item()
-                    #TODO: ensure shifts is small, otherwise skip
-                    x_dry = torch.roll(x_dry, shifts=int(shifts), dims=1)
+                    if self.align_mode=="cross_correlation":
+                        #do that on GPU if it is slow
+                        shifts = find_time_offset(x_dry.mean(0), y_wet.mean(0), margin=3000).item()
+                        #TODO: ensure shifts is small, otherwise skip
+                        x_dry = torch.roll(x_dry, shifts=int(shifts), dims=1)
+
+
 
 
                 if self.normalize_mode is not None:
                     if "dry" in self.normalize_mode:
                         #potentially slow
                         x_dry=self.normaliser(x_dry)
+                        
+                        #detect NaNs here
+
+                        if torch.isnan(x_dry).any():
+                            continue
+
                     else:
                         pass
                 
@@ -268,6 +320,7 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
         skip_list=None,
         normalize_params=None,
         align=False,
+        align_mode=None,
         stereo=True,
         num_examples=4,
         RMS_threshold_dB=-40,
@@ -302,6 +355,10 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
         self.fs=fs
 
         self.align=align
+        if self.align:
+            assert align_mode in ["cross_correlation", "pickle"], "align_mode must be either 'cross_correlation' or 'pickle'"
+            self.align_mode=align_mode
+
         self.normalize_mode=normalize_params.normalize_mode
 
         self.stereo=stereo
@@ -354,55 +411,64 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
             start=total_frames//2 #fixed
             end=start+ self.segment_length
 
+            if self.align and self.align_mode=="pickle":
+                    #aligning using a pickle file with a dictionary, as done for GRAFx
 
-            x_dry, fs=read_wav_segment(dry_file, start, end)
-            assert fs==self.fs, "wrong sampling rate: {}".format(fs)
-            if self.stereo:
-                if self.stereo:
-                    if len(x_dry.shape)==1:
-                        print( "dry not stereo , doubling channels", dry_file.shape)
-                        x_dry=x_dry[:,np.newaxis]
-                        x_dry = np.concatenate((x_dry, x_dry), axis=-1)
-                    elif len(x_dry.shape)==2 and x_dry.shape[-1]==1:
-                        print( "dry not stereo , doubling channels", dry_file.shape)
-                        x_dry = np.concatenate((x_dry, x_dry), axis=-1)
+                    #dry_file is path/sond_id/dry/track.wav
+                    #pickle_file is path/song_id/alignment.pickle
 
-            x_dry=torch.from_numpy(x_dry).permute(1,0)
+                    alignment_file=dry_file.parent.parent / "alignment.pickle"
+                    alignment_data = pickle.load(open(alignment_file, "rb"))
 
-            if x_dry.size(0) > 1:
-                left = x_dry[0]
-                right = x_dry[1]
-                left = left / left.max()
-                right = right / right.max()
-                side = (left - right) * 0.707
-                side_energy = 20*torch.log10(side.abs().max()).item()
+                    dry_align=alignment_data.get("dry_alignment",0)
+                    #multi_align=alignment_data.get("multi_alignment",0)
+                    print("dry_align", dry_align)
+
+                    dry_start = start - dry_align
+                    dry_end= dry_start + self.segment_length
             else:
-                side_energy = -torch.inf
+                dry_start = start
+                dry_end= dry_start + self.segment_length
+
+
+            out= load_audio(dry_file, dry_start, dry_end, stereo=self.stereo)
+            if out is None:
+                continue
+            else:
+                x_dry, fs=out
+
+            assert fs==self.fs, "wrong sampling rate: {}".format(fs)
             
-            if side_energy > self.side_energy_threshold:
-                print(f"Skip {dry_file}")
+            if not check_side_energy(x_dry, dry_file, side_energy_threshold=self.side_energy_threshold):
                 continue
 
-            y_wet, fs=read_wav_segment(wet_file, start, end)
-            assert fs==self.fs, "wrong sampling rate: {}".format(fs)
-            if self.stereo:
-                assert y_wet.shape[-1]==2, "not stereo"
-            y_wet=torch.from_numpy(y_wet).permute(1,0)
+            out= load_audio(wet_file, start, end, stereo=self.stereo)
+            if out is None:
+                continue    
+            else:
+                y_wet, fs=out
 
-            if self.get_RMS(y_wet.mean(0))<self.RMS_threshold_dB:
-                #print("skip wet file because of low RMS (silence)")
+            assert fs==self.fs, "wrong sampling rate: {}".format(fs)
+
+            RMS_dB=self.get_RMS(y_wet.mean(0))
+            if RMS_dB<self.RMS_threshold_dB:
                 continue
 
             if self.align:
-                #do that on GPU if it is slow
-                shifts = find_time_offset(x_dry.mean(0), y_wet.mean(0), margin=3000).item()
-                x_dry = torch.roll(x_dry, shifts=int(shifts), dims=1)
-            
+                if self.align_mode=="cross_correlation":
+                    #do that on GPU if it is slow
+                    shifts = find_time_offset(x_dry.mean(0), y_wet.mean(0), margin=3000).item()
+                    #TODO: ensure shifts is small, otherwise skip
+                    x_dry = torch.roll(x_dry, shifts=int(shifts), dims=1)
+
 
             if self.normalize_mode is not None:
                 if "dry" in self.normalize_mode:
                     #potentially slow
                     x_dry=self.normaliser(x_dry)
+
+                    if torch.isnan(x_dry).any():
+                        continue
                 else:
                     pass
 
