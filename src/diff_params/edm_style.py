@@ -302,6 +302,8 @@ class EDM_Style(SDE):
 
         target = 1/cout * (x - cskip * x_perturbed)
 
+        to_x_hat_fn= lambda xn, x_out: cskip*xn + cout*x_out   
+
         return cin * x_perturbed, target, cnoise
 
     def loss_fn(self, net, sample=None, context=None, *args, **kwargs):
@@ -335,6 +337,7 @@ class EDM_Style(SDE):
         #x=self.flatten(x)
 
         input, target, cnoise = self.prepare_train_preconditioning(y, t )
+        print("y std", y.std(), "input ", input.std(), "target std", target.std())
 
 
         if len(cnoise.shape)==1:

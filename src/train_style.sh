@@ -8,11 +8,12 @@ export HYDRA_FULL_ERROR=1
 source ~/myenv/bin/activate
 
 # main config
+#conf=conf_1C_tency1_fxnorm_vocals_style.yaml
 conf=conf_1C_tencymastering_vocals_style.yaml
-#conf=conf_1A_tencymastering_vocals_LDM.yaml
 
 
 n="1C_tencymastering_vocals_style"
+#n="1C_tency1_fxnorm_vocals_style"
 
 PATH_EXPERIMENT=/data4/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
@@ -23,10 +24,10 @@ mkdir -p $PATH_EXPERIMENT
 
 
 # Number of GPUs to use
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 NUM_GPUS=1
 #MASTER_PORT=29500
-MASTER_PORT=29500
+MASTER_PORT=29501
 
 # Launch the training script with torchrun for DDP
 #torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT train_ddp.py --config-name=$conf  \
@@ -37,4 +38,4 @@ MASTER_PORT=29500
 python train.py --config-name=$conf  \
   model_dir=$PATH_EXPERIMENT \
   logging=base_logging \
-  exp.compile=True \
+  exp.compile=False \

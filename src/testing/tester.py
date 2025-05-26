@@ -118,7 +118,9 @@ class Tester():
     def sample_unconditional(self, mode):
         # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
         audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
-        shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
+
+        shape= self.sampler.diff_params.default_shape
+
         preds, noise_init = self.sampler.predict_unconditional(shape, self.device)
 
         if self.use_wandb:
@@ -154,9 +156,9 @@ class Tester():
             preds=self.sample_conditional_style(mode, sample_x)
 
             if self.use_wandb:
-                self.log_audio(preds[0], f"pred_{i}_{self.sampler.T}")  # Just log first sample
+                #self.log_audio(preds[0], f"pred_{i}_{self.sampler.T}")  # Just log first sample
                 self.log_audio(sample_x[0], f"original_dry+{i}")  # Just log first sample
-                #self.log_audio(sample_y[0], f"original_wet+{i}")  # Just log first sample
+                self.log_audio(sample_y[0], f"original_wet+{i}")  # Just log first sample
             else:
                 raise NotImplementedError
                 try:

@@ -1,15 +1,15 @@
 
 defaults:
-  - dset: tencymastering_vocals_loudnorm
+  - dset: tency1_vocals_fx_norm_loudnorm
   - network: Latent_DiT_SAO_crossatt
   - diff_params: edm_style_AFxRep_Music2Latent4 
   - tester: style_conditional_dry_vocals
   - logging: base_logging
 
-model_dir: "/data4/eloi/experiments/1C_tencymastering_vocals"
+model_dir: "/data4/eloi/experiments/1C_tency1_fxnorm_vocals_style"
 
 exp:
-  exp_name: "1C_tencymastering_vocals" #name of the experiment
+  exp_name: "1C_tency1_fxnorm_vocals_style" #name of the experiment
 
   trainer:
     _target_: "training.trainer_ddp.Trainer"
