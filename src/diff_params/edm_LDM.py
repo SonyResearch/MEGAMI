@@ -30,7 +30,7 @@ class EDM_LDM(SDE):
         self.sigma_max = self.sde_hp.sigma_max
         self.rho = self.sde_hp.rho
 
-        self.default_shape = default_shape
+        self.default_shape = torch.Size(default_shape)
 
         try:
             self.max_t= self.sde_hp.max_sigma
@@ -140,6 +140,7 @@ class EDM_LDM(SDE):
             shape (tuple): shape of the noise to sample, something like (B,T)
         """
         assert shape is not None
+        print(shape)
         if t is not None:
             n = torch.randn(shape, dtype=dtype).to(t.device) * t
         else:
@@ -331,7 +332,7 @@ class EDM_LDM(SDE):
 
 
         
-    def transform_forward(self, x, compile=False):
+    def transform_forward(self, x, compile=False, is_condition=False):
         #TODO: Apply forward transform here
         #fake stereo
         if compile:

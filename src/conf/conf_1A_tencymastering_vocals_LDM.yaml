@@ -38,8 +38,8 @@ exp:
   # I/O-related. moved to logging
   seed: 1 # random seed
 
-  resume: False
-  resume_checkpoint: None
+  resume: True
+  resume_checkpoint: Null
 
   #audio data related
   sample_rate: 44100

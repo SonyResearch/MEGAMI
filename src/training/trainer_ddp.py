@@ -64,7 +64,12 @@ class Trainer():
         self.latest_checkpoint = None
         resuming = False
         if self.args.exp.resume:
+            print("Tryinto to resume")
+            if self.args.exp.resume_checkpoint=="None":
+                self.args.exp.resume_checkpoint = None
             if self.args.exp.resume_checkpoint is not None:
+                print("chckping is not None")
+                print("resuming from", self.args.exp.resume_checkpoint)
                 resuming = self.resume_from_checkpoint(checkpoint_path=self.args.exp.resume_checkpoint)
             else:
                 print("resuming from cejsdat")

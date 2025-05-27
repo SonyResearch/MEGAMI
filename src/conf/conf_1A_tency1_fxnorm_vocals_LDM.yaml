@@ -38,7 +38,7 @@ exp:
   # I/O-related. moved to logging
   seed: 1 # random seed
 
-  resume: False
+  resume: True
   resume_checkpoint: None
 
   #audio data related

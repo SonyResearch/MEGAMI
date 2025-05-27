@@ -281,13 +281,13 @@ class Tester():
                     self.prepare_directories(m, unconditional=True)
                     self.save_experiment_args(m)
                 self.sample_unconditional(m)
-            if m== "conditional_dry_vocals":
+            elif m== "conditional_dry_vocals":
                 print("testing unconditional")
                 if not self.in_training:
                     self.prepare_directories(m, unconditional=False)
                     self.save_experiment_args(m)
                 self.test(m)
-            if m== "style_conditional_dry_vocals":
+            elif m== "style_conditional_dry_vocals":
                 print("testing unconditional")
                 if not self.in_training:
                     self.prepare_directories(m, unconditional=False)
