@@ -8,12 +8,13 @@ train:
   fs: 44100
   stereo: True
 
-  align: False
+  align: True
+  align_mode: "pickle"
 
   normalize_params:
-    #normalize_mode: "loudness_dry"
-    #loudness_dry: -18.0
-    normalize_mode: Null
+    normalize_mode: "loudness_dry"
+    loudness_dry: -18.0
+    #normalize_mode: Null
     #normalize_mode: "rms_dry"
     #rms_dry: -18
 
@@ -32,14 +33,15 @@ validation:
   fs: 44100
   stereo: True
 
-  align: False
+  align: True
+  align_mode: "pickle"
 
   normalize_params:
-    #normalize_mode: "loudness_dry"
-    #loudness_dry: -18.0
+    normalize_mode: "loudness_dry"
+    loudness_dry: -18.0
     #normalize_mode: "rms_dry"
     #rms_dry: -18
-    normalize_mode: Null
+    #normalize_mode: Null
 
 
   num_examples: 4

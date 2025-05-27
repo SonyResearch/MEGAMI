@@ -3,6 +3,9 @@ import numpy as np
 
 from diff_params.shared import SDE
 
+import torch.distributed as dist
+
+
 class EDM(SDE):
     """
         Definition of the diffusion parameterization, following ( Karras et al., "Elucidating...", 2022). 
@@ -12,6 +15,7 @@ class EDM(SDE):
     def __init__(self,
         type,
         sde_hp,
+        cfg_dropout_prob, 
         default_shape,
         ):
 
@@ -29,6 +33,14 @@ class EDM(SDE):
         except Exception as e:
             print(e)
             print("max_sigma not defined, please add it. It should be the highest sigma value seen during training")
+
+        try:
+            rank=dist.get_rank()
+            self.device = torch.device(f"cuda:{rank}")
+        except:
+            self.device = torch.device("cuda:0")
+
+        self.cfg_dropout_prob = cfg_dropout_prob
 
     def sample_time_training(self, N):
         """
@@ -170,6 +182,16 @@ class EDM(SDE):
             sigma (float): noise level (equal to timestep is sigma=t, which is our default)
         """
         y=sample
+
+        if context is not None:
+                if self.cfg_dropout_prob > 0.0:
+                    #context=self.transform_forward(context)
+                    null_embed = torch.zeros_like(context, device=context.device)
+                    #dropout context with probability cfg_dropout_prob
+                    mask = torch.rand(context.shape[0], device=context.device) < self.cfg_dropout_prob
+                    context = torch.where(mask.view(-1,1,1), null_embed, context)
+    
+    
 
         t = self.sample_time_training(y.shape[0]).to(y.device)
 

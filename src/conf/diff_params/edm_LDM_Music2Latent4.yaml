@@ -16,4 +16,4 @@ sde_hp:
   rho: 10
 
 
-shape: [1, 512, 16]
+default_shape: [1, 512, 16]

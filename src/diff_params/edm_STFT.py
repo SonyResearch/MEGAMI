@@ -6,6 +6,7 @@ import omegaconf
 
 import utils.training_utils as utils
 from diff_params.shared import SDE
+import torch.distributed as dist
 
 #from utils.cqt_nsgt_pytorch import CQT_nsgt
 
@@ -28,6 +29,7 @@ class EDM_STFT(SDE):
         type,
         sde_hp,
         stft,
+        cfg_dropout_prob, 
         default_shape
         ):
 
@@ -47,6 +49,13 @@ class EDM_STFT(SDE):
             print("max_sigma not defined, please add it. It should be the highest sigma value seen during training")
         
 
+        self.cfg_dropout_prob = cfg_dropout_prob
+
+        try:
+            rank=dist.get_rank()
+            self.device = torch.device(f"cuda:{rank}")
+        except:
+            self.device = torch.device("cuda:0")
 
         self.stft_kwargs = omegaconf.OmegaConf.create({
             "n_fft": stft.n_fft,
@@ -55,7 +64,7 @@ class EDM_STFT(SDE):
             "center": stft.center
         })
 
-        self.device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        #self.device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         window = get_window("hann", stft.n_fft)
 
@@ -240,6 +249,14 @@ class EDM_STFT(SDE):
 
             x=context
             X=self.transform_forward(x, is_condition=True)
+            if self.cfg_dropout_prob > 0.0:
+                    #context=self.transform_forward(context)
+                    null_embed = torch.zeros_like(X, device=X.device)
+                    #dropout context with probability cfg_dropout_prob
+                    mask = torch.rand(X.shape[0], device=X.device) < self.cfg_dropout_prob
+                    X = torch.where(mask.view(-1,1,1,1), null_embed, X)
+    
+    
         
         print("Y std", Y.std())
 

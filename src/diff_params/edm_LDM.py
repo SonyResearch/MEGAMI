@@ -255,16 +255,21 @@ class EDM_LDM(SDE):
             y=self.transform_forward(y, compile=True)
             if context is not None:
                 context=self.transform_forward(context, compile=True)
-                #context=self.transform_forward(context)
-                null_embed = torch.zeros_like(context, device=context.device)
-                #dropout context with probability cfg_dropout_prob
-                mask = torch.rand(context.shape[0], context.shape[1], device=context.device) < self.cfg_dropout_prob
-                context = torch.where(mask.unsqueeze(-1), null_embed, context)
+
+                if self.cfg_dropout_prob > 0.0:
+                    #context=self.transform_forward(context)
+                    null_embed = torch.zeros_like(context, device=context.device)
+                    #dropout context with probability cfg_dropout_prob
+                    mask = torch.rand(context.shape[0], device=context.device) < self.cfg_dropout_prob
+                    context = torch.where(mask.view(-1,1,1), null_embed, context)
     
 
         #print("y shape", y.shape, "y stdev", y.std())
         #x=self.transform_forward(context)
         #x=self.flatten(x)
+
+        #print("y shape", y.shape, "t shape", t.shape, "context shape", context.shape)
+
 
         input, target, cnoise = self.prepare_train_preconditioning(y, t )
 

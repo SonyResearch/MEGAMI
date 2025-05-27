@@ -246,7 +246,7 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
 
                         dry_align=alignment_data.get("dry_alignment",0)
                         #multi_align=alignment_data.get("multi_alignment",0)
-                        print("dry_align", dry_align)
+                        #print("dry_align", dry_align)
 
                         dry_start = start - dry_align
                         dry_end= dry_start + self.segment_length
