@@ -27,10 +27,13 @@ class EDM_STFT(SDE):
     def __init__(self,
         type,
         sde_hp,
-        stft
+        stft,
+        default_shape
         ):
 
         super().__init__(type, sde_hp)
+
+        self.default_shape = torch.Size(default_shape)
 
         self.sigma_data = self.sde_hp.sigma_data #depends on the training data!! precalculated variance of the dataset
         self.sigma_min = self.sde_hp.sigma_min
@@ -62,7 +65,6 @@ class EDM_STFT(SDE):
             window = window.to(sig.device)
             C=sig.shape[1]
             sig=einops.rearrange(sig, "b c t -> (b c) t")   
-            print("stft", stft)
             spec= torch.stft(sig, **{**self.stft_kwargs, "window": window}, return_complex=True)
             # spec= torch.stft(sig, **{**vars(self.stft_kwargs), "window": window}, return_complex=True)
             spec=einops.rearrange(spec, "(b c) f t -> b c f t", c=C)
@@ -72,10 +74,24 @@ class EDM_STFT(SDE):
                 num_pad= N_pad - spec.shape[-1] % N_pad
                 spec= torch.nn.functional.pad(spec, (0, num_pad, 0, 0), mode="constant", value=0)
             spec = spec.type(torch.complex64)
+
+            if stft.compression_alpha != 1 or stft.compression_beta != 1:
+                e=stft.compression_alpha
+                beta=stft.compression_beta
+
+                spec = spec.abs()**e * torch.exp(1j * spec.angle())
+                spec = spec * beta
+
             return spec
 
 
         def istft( spec, length=None, window=None):
+
+            if stft.compression_alpha != 1 or stft.compression_beta != 1:
+                spec = spec / stft.compression_beta
+                e = stft.compression_alpha
+                spec = spec.abs()**(1/e) * torch.exp(1j * spec.angle())
+
             window = window.to(spec.device)
             c=spec.shape[1]
             spec=einops.rearrange(spec, "b c f t -> (b c) f t")
@@ -206,7 +222,7 @@ class EDM_STFT(SDE):
 
         return cin * x_perturbed, target, cnoise
 
-    def loss_fn(self, net, x,n=None, *args, **kwargs):
+    def loss_fn(self, net, sample=None, context=None, *args, **kwargs):
         """
         Loss function, which is the mean squared error between the denoised latent and the clean latent
         Args:
@@ -214,16 +230,20 @@ class EDM_STFT(SDE):
             x (Tensor): shape: (B,T) Intermediate noisy latent to denoise
             sigma (float): noise level (equal to timestep is sigma=t, which is our default)
         """
-        t = self.sample_time_training(x.shape[0]).to(x.device)
+        y=sample
+
+        t = self.sample_time_training(y.shape[0]).to(y.device)
 
         #print("sample std", x_CQT.std())
         with torch.no_grad():
-            X=self.transform_forward(x)
-            X=self.flatten(X)
+            Y=self.transform_forward(y)
 
-        print("x std", X.std(), X.shape, X.dtype)
+            x=context
+            X=self.transform_forward(x, is_condition=True)
+        
+        print("Y std", Y.std())
 
-        input, target, cnoise = self.prepare_train_preconditioning(X, t, n=n)
+        input, target, cnoise = self.prepare_train_preconditioning(Y, t)
 
         #print("x_in", input.std(), input.shape, input.dtype)
         #print("target", target.std(), target.shape, target.dtype)
@@ -234,20 +254,19 @@ class EDM_STFT(SDE):
         if input.ndim==2:
             input=input.unsqueeze(1)
 
-        estimate = self.flatten(net(self.unflatten(input), cnoise.squeeze(-1)))
+        estimate = net(input, cnoise.squeeze(-1), input_concat_cond=X)
         
         if target.ndim==2 and estimate.ndim==3:
             estimate=estimate.squeeze(1)
 
         error=torch.square(torch.abs(estimate-target))
-
         
 
         return error, self._std(t)
 
 
 
-    def denoiser(self, xn , net, t, *args, **kwargs):
+    def denoiser(self, xn , net, t, cond=None, *args, **kwargs):
         """
         This method does the whole denoising step, which implies applying the model and the preconditioning
         Args:
@@ -276,11 +295,9 @@ class EDM_STFT(SDE):
         x_in=cin*xn
 
 
-        x_in=self.unflatten(x_in)
+        net_out=net(x_in.to(dtype_in), cnoise.squeeze(-1).to(torch.float32), input_concat_cond=cond)  #this will crash because of broadcasting problems, debug later!
 
-        net_out=net(x_in.to(dtype_in), cnoise.squeeze(-1).to(torch.float32))  #this will crash because of broadcasting problems, debug later!
-
-        net_out=self.flatten(net_out).to(xn.dtype)
+        net_out=net_out.to(xn.dtype)
 
         x_hat=cskip*xn + cout*net_out   
 
@@ -313,10 +330,11 @@ class EDM_STFT(SDE):
 
 
         
-    def transform_forward(self, x):
+    def transform_forward(self, x, is_condition=False):
         #TODO: Apply forward transform here
-        print("x shape", x.shape)
-        X=self.stft_fwd(x.view(-1, 1, x.shape[-1]))
+        X=self.stft_fwd(x)
+        if is_condition:
+            X=X.abs()
 
         #X_list is a list of tensors with shape (B, C, time, freq), where time and freq are different for each tensor
 

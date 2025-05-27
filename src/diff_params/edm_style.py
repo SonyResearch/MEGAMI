@@ -417,7 +417,7 @@ class EDM_Style(SDE):
         return x
 
         
-    def transform_forward(self, x, compile=False):
+    def transform_forward(self, x, compile=False, is_condition=False):
         #TODO: Apply forward transform here
         #fake stereo
         if compile:

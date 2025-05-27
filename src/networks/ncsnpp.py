@@ -290,17 +290,26 @@ class NCSNpp(nn.Module):
         modules = self.all_modules
         m_idx = 0
 
+        #check if x is complex
+        return_complex = False
+        if torch.is_complex(x):
+            return_complex= True
+            x_chans = []
+            C= x.shape[1]  # C = 2 * D
+            for i in range(C):
+                x_i= x[:, i, :, :].unsqueeze(1)  # b,1,F,T
+                x_chans.append(torch.cat([x_i.real, x_i.imag], dim=1))  # b,2,F,T
+            x_spec_in = torch.cat(x_chans, dim=1) #4*D
+        else:
+            x_spec_in = x  # b,2*D,F,T
+
+        if input_concat_cond is not None:
+            #print("input_concat_cond.shape", input_concat_cond.shape, "x_spec_in.shape", x_spec_in.shape)
+            x_spec_in = torch.cat([x_spec_in, input_concat_cond], dim=1)
         # Convert real and imaginary parts into channel dimensions
-        #x_chans = []
-        #for chan in range(self.spatial_channels):
-        #    x_chans.append(torch.cat([ 
-        #        torch.cat([x[:,[chan+in_chan],:,:].real, x[:,[chan+in_chan],:,:].imag ], dim=1) for in_chan in range(self.input_channels // 2)],
-        #            dim=1)
-        #        )
 
-        #x = torch.cat(x_chans, dim=1) #4*D
 
-        x=x
+        x=x_spec_in
 
         if self.time_conditional and time_cond is not None:
 
@@ -447,9 +456,7 @@ class NCSNpp(nn.Module):
         else:
             h = self.act(modules[m_idx](h))
             m_idx += 1
-            print("pre h.shape", h.shape)
             h = modules[m_idx](h)
-            print("post h.shape", h.shape)
             m_idx += 1
 
         assert m_idx == len(modules)
@@ -460,6 +467,23 @@ class NCSNpp(nn.Module):
         #print("h.shape", h.shape)
 
         #h = torch.view_as_complex(h) #b,D,F,T
+        if return_complex:
+            x_spec=h
+
+            x_l=x_spec[:,0:2,:,:]  # b,1,F,T
+            x_r=x_spec[:,2:4,:,:]
+    
+            x_l = torch.reshape(x_l, (x_l.size(0), 2, 1, x_l.size(2), x_l.size(3)))
+            x_l = torch.permute(x_l, (0, 2, 3, 4, 1)).contiguous() # b,2,D,F,T -> b,D,F,T,2
+    
+            x_r = torch.reshape(x_r, (x_r.size(0), 2, 1, x_r.size(2), x_r.size(3)))
+            x_r = torch.permute(x_r, (0, 2, 3, 4, 1)).contiguous() # b,2,D,F,T -> b,D,F,T,2
+    
+            x_l = torch.view_as_complex(x_l)  # Convert back to complex
+            x_r = torch.view_as_complex(x_r)
+
+            h = torch.cat([x_l, x_r], dim=1)
+
         return h
 
 
