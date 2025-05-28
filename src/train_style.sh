@@ -8,14 +8,14 @@ export HYDRA_FULL_ERROR=1
 source ~/myenv/bin/activate
 
 # main config
-#conf=conf_1C_tency1_fxnorm_vocals_style.yaml
-conf=conf_1C_tencymastering_vocals_style.yaml
+conf=conf_1C_tency1_fxnorm_vocals_style.yaml
+#conf=conf_1C_tencymastering_vocals_style.yaml
 
 
-n="1C_tencymastering_vocals_style"
-#n="1C_tency1_fxnorm_vocals_style"
+#n="1C_tencymastering_vocals_style_v2"
+n="1C_tency1_fxnorm_vocals_style"
 
-PATH_EXPERIMENT=/data4/eloi/experiments/$n
+PATH_EXPERIMENT=/data5/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
 
 #python train.py --config-name=$conf \
@@ -24,7 +24,7 @@ mkdir -p $PATH_EXPERIMENT
 
 
 # Number of GPUs to use
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=3
 NUM_GPUS=1
 #MASTER_PORT=29500
 MASTER_PORT=29501
@@ -38,4 +38,6 @@ MASTER_PORT=29501
 python train.py --config-name=$conf  \
   model_dir=$PATH_EXPERIMENT \
   logging=base_logging \
-  exp.compile=False \
+  exp.compile=True \
+  dset=tency1_vocals_fx_norm_server5 \
+  #dset=tencymastering_vocals_server5 \

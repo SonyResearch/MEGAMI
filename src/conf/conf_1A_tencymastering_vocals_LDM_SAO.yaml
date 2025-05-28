@@ -1,6 +1,6 @@
 
 defaults:
-  - dset: tencymastering_vocals
+  - dset: tencymastering_vocals_server5
   - network: Latent_DiT_SAO_SAO
   - diff_params: edm_LDM_SAO
   - tester: conditional_dry_vocals

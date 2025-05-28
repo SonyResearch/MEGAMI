@@ -57,9 +57,11 @@ class EDM_LDM(SDE):
                 if mono:
                     x=torch.stack([x, x], dim=1)
                 z=self.AE.pretransform.encode(x)
+                z=einops.rearrange(z, "b t c -> b c t")
                 return z
             
             def decode_fn(z, mono=False):
+                z=einops.rearrange(z, "b c t -> b t c")
                 x=self.AE.pretransform.decode(z)
                 #invert fake stereo
                 if mono:
@@ -67,6 +69,7 @@ class EDM_LDM(SDE):
                 return x
 
             self.AE_encode=encode_fn
+            self.AE_encode_compiled=torch.compile(encode_fn)
             self.AE_decode=decode_fn
 
 
@@ -140,7 +143,7 @@ class EDM_LDM(SDE):
             shape (tuple): shape of the noise to sample, something like (B,T)
         """
         assert shape is not None
-        print(shape)
+        #print(shape)
         if t is not None:
             n = torch.randn(shape, dtype=dtype).to(t.device) * t
         else:
@@ -265,7 +268,7 @@ class EDM_LDM(SDE):
                     context = torch.where(mask.view(-1,1,1), null_embed, context)
     
 
-        #print("y shape", y.shape, "y stdev", y.std())
+        #print("y shape", y.shape, "y stdev", y.std(), "context shape", context.shape, "t shape", t.shape)
         #x=self.transform_forward(context)
         #x=self.flatten(x)
 
