@@ -139,7 +139,7 @@ class EDM(SDE):
             model (nn.Module): Model of the denoiser
             sigma (float): noise level (equal to timestep is sigma=t, which is our default)
         """
-        print("xn",xn.shape)
+        #print("xn",xn.shape)
         sigma = self._std(t).unsqueeze(-1)
         sigma = sigma.view(*sigma.size(), *(1,)*(xn.ndim - sigma.ndim))
 

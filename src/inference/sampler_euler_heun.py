@@ -1,6 +1,5 @@
 from tqdm import tqdm
 import torch
-import wandb
 from inference.sampler import Sampler
 
 
@@ -30,8 +29,6 @@ class SamplerEulerHeun(Sampler):
 
         self.cfg_scale = cfg_scale
 
-        if self.args.tester.wandb.use:
-            self.setup_wandb()
 
         return self.predict(shape, device)
 
@@ -42,8 +39,6 @@ class SamplerEulerHeun(Sampler):
     ):
         self.y = None
         self.degradation = None
-        if self.args.tester.wandb.use:
-            self.setup_wandb()
 
         return self.predict(shape, device)
 
@@ -153,35 +148,8 @@ class SamplerEulerHeun(Sampler):
 
         for i in tqdm(range(0, self.T-1, 1)):
             self.step_counter = i
-            #print("step", i, x.shape, shape)
             x, x_den = self.step(x, t[i], t[i + 1], gamma[i], blind)
-            #print("Logging after step", x.std(), x_den.std(), t[i], t[i + 1], gamma[i])
 
-            if self.args.tester.wandb.use:
-                self.wandb_run.log({"x_0_std": x.std()}, step=i)
-                if i % self.args.tester.wandb.log_every == 0:
-                    maxim = torch.max(torch.abs(x[0])).detach().cpu().numpy()
-                    if maxim < 1:
-                        maxim = 1
-                    for k in range(0, len(x)):
-                        x_wave=self.diff_params.transform_inverse(x[k].detach())
-                        self.wandb_run.log({"x" + str(k): wandb.Audio(x_wave.detach().cpu().numpy() / maxim,
-                                                                      sample_rate=self.args.exp.sample_rate)}, step=i)
-                    maxim = torch.max(torch.abs(x_den[0])).detach().cpu().numpy()
-                    if maxim < 1:
-                        maxim = 1
-                    for k in range(0, len(x_den)):
-                        x_wave=self.diff_params.transform_inverse(x_den[k].detach())
-                        self.wandb_run.log({"x_tweedie" + str(k): wandb.Audio(x_wave.detach().cpu().numpy() / maxim,
-                                                                              sample_rate=self.args.exp.sample_rate)},
-                                           step=i)
-
-        if self.args.tester.wandb.use:
-            #if self.args.tester.dewhiten:
-            #    x_dewhiten = self.diff_params.dewhiten(x)
-            #    self.wandb_run.log({"x_dewhiten": wandb.Audio(x_dewhiten[0].detach().cpu().numpy(),sample_rate=self.args.exp.sample_rate)}, step=i)
-                
-            self.wandb_run.finish()
 
         x_den_wave=self.diff_params.transform_inverse(x_den.detach())
 

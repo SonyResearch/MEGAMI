@@ -1,6 +1,6 @@
 import soundfile as sf
 
-def read_wav_segment(file_path, start, end, dtype="float32"):
+def read_wav_segment(file_path, start=None, end=None, dtype="float32"):
     """
     Reads a specific segment from a .wav file efficiently.
 
@@ -14,11 +14,14 @@ def read_wav_segment(file_path, start, end, dtype="float32"):
         int: Sample rate of the audio file.
     """
     # Open the .wav file
-    with sf.SoundFile(file_path) as audio_file:
-        # Read only the required frames
-        audio_file.seek(start)
-        data = audio_file.read(frames=end-start, dtype=dtype)
-        samplerate = audio_file.samplerate
+    if start is None or end is None:
+        data, samplerate = sf.read(file_path, dtype=dtype)
+    else:
+        with sf.SoundFile(file_path) as audio_file:
+            # Read only the required frames
+            audio_file.seek(start)
+            data = audio_file.read(frames=end-start, dtype=dtype)
+            samplerate = audio_file.samplerate
 
     return data, samplerate
 

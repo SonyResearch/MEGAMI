@@ -38,6 +38,14 @@ class Tester():
             torch.backends.cudnn.benchmark = True
             if self.device is None:
                 self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            
+            self.setup_wandb()
+
+
+        if self.args.tester.compute_metrics:
+            self.metrics_dict= self.prepare_metrics(self.args.tester.metrics)
+        else:
+            self.metrics_dict = {}
 
     def setup_wandb(self):
         """
@@ -46,12 +54,12 @@ class Tester():
         config = omegaconf.OmegaConf.to_container(
             self.args, resolve=True, throw_on_missing=True
         )
-        self.wandb_run = wandb.init(project="testing" + self.args.exp.wandb.project, entity=self.args.exp.wandb.entity,
+        self.wandb_run = wandb.init(project="testing" + self.args.tester.wandb.project, entity=self.args.tester.wandb.entity,
                                     config=config)
-        wandb.watch(self.network,
-                    log_freq=self.args.logging.heavy_log_interval)
+        #wandb.watch(self.network,
+        #            log_freq=self.args.logging.heavy_log_interval)
 
-        self.wandb_run.name = self.args.exp.exp_name 
+        self.wandb_run.name = self.args.tester.wandb.run_name 
         self.use_wandb = True
 
     def setup_wandb_run(self, run):
@@ -94,6 +102,12 @@ class Tester():
 
         print(f"loading checkpoint {self.it}")
         return tr_utils.load_state_dict(state_dict, ema=self.network)
+
+    def log_metric(self, value, name: str, step=None):
+        self.wandb_run.log(
+            {name: value},
+            step=step if step is not None else self.it
+        )
 
     def log_audio(self, pred, name: str):
         if self.use_wandb:
@@ -157,8 +171,9 @@ class Tester():
 
             if self.use_wandb:
                 #self.log_audio(preds[0], f"pred_{i}_{self.sampler.T}")  # Just log first sample
-                self.log_audio(sample_x[0], f"original_dry+{i}")  # Just log first sample
-                self.log_audio(sample_y[0], f"original_wet+{i}")  # Just log first sample
+                if i < self.args.tester.wandb.num_examples_to_log:  # Log only first 10 samples
+                    self.log_audio(sample_x[0], f"original_dry+{i}")  # Just log first sample
+                    self.log_audio(sample_y[0], f"original_wet+{i}")  # Just log first sample
             else:
                 raise NotImplementedError
                 try:
@@ -174,38 +189,56 @@ class Tester():
                 except:
                     pass
 
-    def test(self, mode):
+    def prepare_metrics(self, metrics):
+        metrics_dict = {}
+        for metric in metrics:
+            if "pairwise" in metric:
+                from evaluation.pairwise_metrics import metric_factory
+                metrics_dict[metric]=metric_factory(metric, self.args.exp.sample_rate)
+
+        return metrics_dict
+            
+    def test_conditional(self, mode):
 
         assert len(self.test_set) != 0, "No samples found in test set"
 
-        #print("Files will be saved in: ", self.paths[mode])
+        dict_y = {}
+        dict_x = {}
+        dict_y_hat = {}
+
+        self.it= 0  # reset iteration for testing
 
         for i, (sample_y, sample_x ) in enumerate(tqdm(self.test_set)):
 
+            self.it= i
+
+            #print("sample_x", sample_x, "sample_y", sample_y)
+
             sample_y = sample_y.to(self.device).float().unsqueeze(0)
             sample_x = sample_x.to(self.device).float().unsqueeze(0)
-            print("sample_y", sample_y.shape, "sample_x", sample_x.shape)
+            #print("sample_y", sample_y.shape, "sample_x", sample_x.shape)
 
             preds=self.sample_conditional(mode, sample_x)
 
             if self.use_wandb:
-                self.log_audio(preds[0], f"pred_{i}_{self.sampler.T}")  # Just log first sample
-                self.log_audio(sample_y[0], f"original_wet+{i}")  # Just log first sample
-                self.log_audio(sample_x[0], f"original_dry+{i}")  # Just log first sample
-            else:
-                raise NotImplementedError
-                try:
-                    if not self.in_training:
-                        for i in range(len(preds)):
-                            path_generated = utils_logging.write_audio_file(preds[i] * sigma_data,
-                                                                            self.args.exp.sample_rate,
-                                                                            f"unconditional_{self.args.tester.wandb.pair_id}",
-                                                                            path=self.paths["unconditional"])
-                            path_generated_noise = utils_logging.write_audio_file(noise_init[i], self.args.exp.sample_rate,
-                                                                                  f"noise_{self.args.tester.wandb.pair_id}",
-                                                                                  path=self.paths["unconditional"])
-                except:
-                    pass
+
+                if i < self.args.tester.wandb.num_examples_to_log:  # Log only first 10 samples
+                    self.log_audio(preds[0], f"pred")  # Just log first sample
+                    self.log_audio(sample_y[0], f"original_wet")  # Just log first sample
+                    self.log_audio(sample_x[0], f"original_dry")  # Just log first sample
+            
+            dict_y[i] = sample_y[0].detach().cpu().numpy()
+            dict_x[i] = sample_x[0].detach().cpu().numpy()
+            dict_y_hat[i] = preds[0].detach().cpu().numpy()
+        
+        if self.args.tester.compute_metrics:
+            for metric in self.metrics_dict.keys():
+                print(f"Computing metric {metric}")
+                result, result_dict=self.metrics_dict[metric].compute(dict_y, dict_y_hat, dict_x)
+
+                if self.use_wandb:
+                    print(f"Logging metric {metric} to wandb")
+                    self.log_metric(result, metric, step=self.it)
 
 
     def sample_conditional_style(self, mode, cond):
@@ -272,7 +305,7 @@ class Tester():
     def do_test(self, it=0):
 
         self.it = it
-        print(self.args.tester.modes)
+        #print(self.args.tester.modes)
         for m in self.args.tester.modes:
 
             if m == "unconditional":
@@ -286,7 +319,7 @@ class Tester():
                 if not self.in_training:
                     self.prepare_directories(m, unconditional=False)
                     self.save_experiment_args(m)
-                self.test(m)
+                self.test_conditional(m)
             elif m== "style_conditional_dry_vocals":
                 print("testing unconditional")
                 if not self.in_training:

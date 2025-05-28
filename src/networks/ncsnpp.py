@@ -540,7 +540,7 @@ class NCSNppTime(NCSNpp):
 
         if input_concat_cond is not None:
             #print("input_concat_cond.shape", input_concat_cond.shape)
-            assert input_concat_cond.shape==x.shape, "input_concat_cond must have the same shape as x"
+            assert input_concat_cond.shape==x.shape, "input_concat_cond must have the same shape as x {} but got {}".format(input_concat_cond.shape, x.shape)
             input_stft=torch.cat([x, input_concat_cond], dim=0)
             res_stft=self.stft(input_stft)
 
