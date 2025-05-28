@@ -1,6 +1,6 @@
 
 defaults:
-  - dset: tency1_vocals_fx_norm
+  - dset: tency1_vocals_fx_norm_server5
   - network: Latent_DiT_SAO_SAO
   - diff_params: edm_LDM_SAO
   - tester: conditional_dry_vocals
