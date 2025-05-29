@@ -3,7 +3,7 @@ test:
   _target_: datasets.tency_mastering_vocals_test.TencyMastering_Vocals_Test
   base_dir: "/data2/share/TencyMastering"
   processed_dir: "/data4/eloi/TencyMastering_fxnorm/part4_test_vocals"
-  mode: "dryfxnorm-wet"
+  mode: "wetfxnorm-wet"
   skip_list: ["part1/6699", "part1/33787", "part1/65486", "part1/66235", "part2/67570", "part2/67808", "part3/12212", "part3/67437", "part4_validation/67476", "part2/67658", "part2/67719", "part4_validation/10356"]
   subdirs: ["part4_test"]
   segment_length: 525312

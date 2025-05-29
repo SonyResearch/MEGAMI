@@ -17,11 +17,11 @@ checkpoint: None
 sampling_params:
   same_as_training: False #if true, the sampling parameters will be the same as the ones used for training (sigma_data, sigma_min, sigma_max and rho)
   sde_hp:
-    sigma_data: 0.05 #default for maestro
+    sigma_data: 1 #default for maestro
     sigma_min: 1e-4
-    sigma_max: 10 #this is sigma_start
-    rho: 10
-  Schurn: 20
+    sigma_max: 200 #this is sigma_start
+    rho: 8
+  Schurn: 10
   Snoise: 1
   Stmin: 0
   Stmax: 10
@@ -29,7 +29,7 @@ sampling_params:
   T: 51 #number of discretization steprs
   schedule: "edm" #"log": log schedule using the parameters in sampling_params
 
-cfg_scale: 1.0
+cfg_scale: 2.0
 
 #experiment configuration for different testing modes
 

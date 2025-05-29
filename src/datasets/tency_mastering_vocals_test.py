@@ -240,6 +240,7 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
             #if counter >= num_examples and num_examples!= -1:
             #    break
 
+            print("mode", mode)
             if mode=="dry-wet":
 
                 out= load_audio(dry_file, stereo=self.stereo)
@@ -272,6 +273,7 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
                 id=dry_file.parent.parent.name
                 print("id", id)
 
+                print("wetfxnorm_file", os.path.join(processed_dir, "wet", id, "vocals_normalized.wav"))
                 wetfxnorm_file=os.path.join(processed_dir, "wet", id, "vocals_normalized.wav")
 
                 out= load_audio(wetfxnorm_file, stereo=self.stereo)

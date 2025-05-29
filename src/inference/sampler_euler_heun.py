@@ -27,8 +27,8 @@ class SamplerEulerHeun(Sampler):
         self.cond = cond
         assert self.cond is not None, "Conditional input is None"
 
+        print("cfg_scale", cfg_scale)
         self.cfg_scale = cfg_scale
-
 
         return self.predict(shape, device)
 

@@ -83,7 +83,7 @@ class EDM_LDM(SDE):
                 Convert the latent representation to a sequence of latent vectors.
                 """
                 # Reshape the latent representation to match the expected input shape
-                latent = latent.view(latent.size(0), latent.size(1), -1)
+                latent = latent.view(latent.size(0),-1, latent.size(-1))
                 return latent
 
             def seq2latent(latent_sequence):
@@ -91,7 +91,7 @@ class EDM_LDM(SDE):
                 Convert the sequence of latent vectors back to the original latent representation.
                 """
                 # Reshape the latent sequence to match the expected output shape
-                latent = latent_sequence.view(latent_sequence.size(0),latent_sequence.size(1), -1, 64)
+                latent = latent_sequence.view(latent_sequence.size(0), -1,8, latent_sequence.size(-1))
                 return latent
 
 
