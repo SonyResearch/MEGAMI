@@ -12,7 +12,7 @@ source ~/myenv/bin/activate
 #conf=conf_1A_tency1_fxnorm_vocals_LDM_SAO.yaml
 #n="1A_tency1_fxnorm_vocals_LDM_SAO"
 conf=conf_1A_tency1_fxnorm_vocals_LDM_M2L4.yaml
-n="1A_tency1_fxnorm_vocals_LDM_M2L4"
+n="1A_tencymastering_vocals_LDM_M2L4_preproc"
 
 #conf=conf_1A_tencymastering_vocals_LDM_M2L4.yaml
 #n="1A_tencymastering_vocals_LDM_M2L4"
@@ -27,8 +27,8 @@ mkdir -p $PATH_EXPERIMENT
 
 # Number of GPUs to use
 #export CUDA_VISIBLE_DEVICES=2,3
-export CUDA_VISIBLE_DEVICES=0,1
-NUM_GPUS=2
+export CUDA_VISIBLE_DEVICES=0
+NUM_GPUS=1
 #MASTER_PORT=29501
 MASTER_PORT=29500
 
@@ -37,9 +37,9 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT train_ddp.py --co
 		model_dir=$PATH_EXPERIMENT \
 		exp.optimizer.lr=1e-4 \
 		exp.resume=False \
-		exp.batch_size=4 \
+		exp.batch_size=8 \
 	  	exp.compile=True \
-	  	logging=base_logging \
+	  	logging=base_logging_debug \
 
 #python train.py --config-name=$conf  \
 #	  model_1_fxnorm_EXPERIMENT \

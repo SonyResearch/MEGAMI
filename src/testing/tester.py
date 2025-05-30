@@ -109,7 +109,9 @@ class Tester():
             step=step if step is not None else self.it
         )
 
-    def log_audio(self, pred, name: str):
+    def log_audio(self, pred, name: str, it=None):
+        if it is not None:
+            it = self.it 
         if self.use_wandb:
             #pred = pred.view(-1)
             #maxim = torch.max(torch.abs(pred)).detach().cpu().numpy()
@@ -118,7 +120,7 @@ class Tester():
             pred=pred.permute(1,0)
             self.wandb_run.log(
                 {name: wandb.Audio(pred.detach().cpu().numpy() , sample_rate=self.args.exp.sample_rate)},
-                step=self.it)
+                step=it)
 
             if self.args.logging.log_spectrograms:
                 raise NotImplementedError
@@ -206,11 +208,9 @@ class Tester():
         dict_x = {}
         dict_y_hat = {}
 
-        self.it= 0  # reset iteration for testing
 
         for i, (sample_y, sample_x ) in enumerate(tqdm(self.test_set)):
 
-            self.it= i
 
             #print("sample_x", sample_x, "sample_y", sample_y)
 
@@ -223,9 +223,14 @@ class Tester():
             if self.use_wandb:
 
                 if i < self.args.tester.wandb.num_examples_to_log:  # Log only first 10 samples
-                    self.log_audio(preds[0], f"pred")  # Just log first sample
-                    self.log_audio(sample_y[0], f"original_wet")  # Just log first sample
-                    self.log_audio(sample_x[0], f"original_dry")  # Just log first sample
+                    if self.in_training:
+                        self.log_audio(preds[0], f"pred_{i}", it=self.it)  # Just log first sample
+                        self.log_audio(sample_y[0], f"original_wet_{i}", it=self.it)  # Just log first sample
+                        self.log_audio(sample_x[0], f"original_dry_{i}", it=self.it)  # Just log first sample
+                    else:
+                        self.log_audio(preds[0], f"pred", it=i)  # Just log first sample
+                        self.log_audio(sample_y[0], f"original_wet", it=i)  # Just log first sample
+                        self.log_audio(sample_x[0], f"original_dry", it=i)  # Just log first sample
             
             dict_y[i] = sample_y[0].detach().cpu().numpy()
             dict_x[i] = sample_x[0].detach().cpu().numpy()
