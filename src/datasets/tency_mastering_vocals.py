@@ -137,19 +137,14 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
     def __init__(self,
         fs=44100,
         segment_length=131072,
-        skip=None,
         base_dir=None,
-        processed_dir=None,
         mode="dry-wet",
-        subdirs=None,
-        skip_list=None,
         normalize_params=None,
         align=False,
         align_mode=None,
         stereo=True,
         num_examples=4,
         RMS_threshold_dB=-40,
-        side_energy_threshold=-10,
         seed=42
         ):
 
@@ -159,37 +154,14 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
         np.random.seed(seed)
         random.seed(seed)
 
-        base_path=os.path.join(base_dir)
+
 
         id_list=[]
-        for subdir in subdirs:
-            path=os.path.join(base_path,subdir)
-            id_list=glob.glob(os.path.join(path,"*"))
-
-        def filter_ids(path):
-            id_track=path.split("/")[-1]
-            partition=path.split("/")[-2]
-            id_name=partition+"/"+id_track
-            if id_name in skip_list:
-                return False
-            else:
-                return True
-
-        id_list=[x for x in id_list if filter_ids(x)]
+        id_list=glob.glob(os.path.join(base_dir, "dry","*"))
+    
         assert len(id_list)>0, "No files found in the dataset"
 
-        ids_processed_dir=glob.glob(os.path.join(processed_dir, "dry","*"))
-
-        print("ids_processed_dir", len(ids_processed_dir))
-
-        #take only the ids that are in the processed_dir
-        id_list=[x for x in id_list if os.path.join(processed_dir, "dry", x.split("/")[-1]) in ids_processed_dir]
-
-        print("id_list", len(id_list))
-
-        self.pair_list=process_id_list_lead_vocal(id_list)
-
-        print("pair_list", len(self.pair_list))
+        self.id_list=id_list
 
         self.segment_length=segment_length
         self.fs=fs
@@ -226,22 +198,24 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
         elif self.normalize_mode is None:
             self.normaliser = lambda x: x
         
+
         self.RMS_threshold_dB=RMS_threshold_dB
 
         self.get_RMS=lambda x: 20 * torch.log10(torch.sqrt(torch.mean(x ** 2, dim=-1)))
-
-        self.side_energy_threshold=side_energy_threshold
 
         self.test_samples = []
 
         counter=0
 
-        for dry_file, wet_file in tqdm(self.pair_list):
+        #for dry_file, wet_file in tqdm(self.pair_list):
+        for id in tqdm(self.id_list):
             #if counter >= num_examples and num_examples!= -1:
             #    break
-
             print("mode", mode)
             if mode=="dry-wet":
+                dry_file=id / "dry" / "vocals.wav"
+
+                assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)    
 
                 out= load_audio(dry_file, stereo=self.stereo)
 
@@ -252,74 +226,59 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
                     assert fs==self.fs, "wrong sampling rate: {}".format(fs)
                 
                 x_long= x_dry_long
+
             
             elif mode=="dryfxnorm-wet":
+                
+                dry_file=id / "dry" / "vocals_normalized.wav"
 
-                id=dry_file.parent.parent.name
-                print("id", id)
+                assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)
 
-                dryfxnorm_file=os.path.join(processed_dir, "dry", id, "vocals_normalized.wav")
-
-                out= load_audio(dryfxnorm_file, stereo=self.stereo)
+                out= load_audio(dry_file, stereo=self.stereo)
 
                 if out is None:
                     continue
                 else:
-                    x_long, fs=out
+                    x_dry_long, fs=out
                     assert fs==self.fs, "wrong sampling rate: {}".format(fs)
+                
+                x_long= x_dry_long
+
                 
             elif mode=="wetfxnorm-wet":
 
-                id=dry_file.parent.parent.name
-                print("id", id)
+                dry_file=id / "wet" / "vocals_normalized.wav"
 
-                print("wetfxnorm_file", os.path.join(processed_dir, "wet", id, "vocals_normalized.wav"))
-                wetfxnorm_file=os.path.join(processed_dir, "wet", id, "vocals_normalized.wav")
+                assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)    
 
-                out= load_audio(wetfxnorm_file, stereo=self.stereo)
+                out= load_audio(dry_file, stereo=self.stereo)
+
                 if out is None:
                     continue
                 else:
-                    x_long, fs=out
+                    x_dry_long, fs=out
                     assert fs==self.fs, "wrong sampling rate: {}".format(fs)
+                
+                x_long= x_dry_long
 
                 
-            
+            wet_file=id / "wet" / "vocals.wav"
+
+            assert wet_file.exists(), "wet file does not exist: {}".format(wet_file)
+
             out= load_audio(wet_file, stereo=self.stereo)
+
             if out is None:
-                continue
+                    continue
             else:
-                y_wet_long, fs=out
-                assert fs==self.fs, "wrong sampling rate: {}".format(fs)
-
-
-            #total_frames=min(dry_total_frames, wet_total_frames)
-
-            #sample "start" uniformly in the range [0, total_frames-seg_len]
-            #start=np.random.randint(0,total_frames-self.segment_length)
-
-            #start=total_frames//2 #fixed
-            #end=start+ self.segment_length
-
-            if self.align and self.align_mode=="pickle":
-                    #aligning using a pickle file with a dictionary, as done for GRAFx
-
-                    #dry_file is path/sond_id/dry/track.wav
-                    #pickle_file is path/song_id/alignment.pickle
-
-                    alignment_file=dry_file.parent.parent / "alignment.pickle"
-                    alignment_data = pickle.load(open(alignment_file, "rb"))
-
-                    dry_align=alignment_data.get("dry_alignment",0)
-                    #multi_align=alignment_data.get("multi_alignment",0)
-                    x_long=torch.roll(x_long, shifts=int(dry_align), dims=-1)
-            
-            elif self.align and self.align_mode=="cross_correlation":
-                    #do that on GPU if it is slow
-                    shifts = find_time_offset(x_long.mean(0), y_wet_long.mean(0), margin=3000).item()
-                    #TODO: ensure shifts is small, otherwise skip
-                    x_dry_long = torch.roll(x_long, shifts=int(shifts), dims=1)
+                    y_wet_long, fs=out
+                    assert fs==self.fs, "wrong sampling rate: {}".format(fs)
                 
+            y_long=y_wet_long
+            
+            assert self.align==False, "align is not supported yet for this dataset"
+
+
             #pad x_dry if it is not a multiple of segment_length
             max_length = max(x_long.size(-1), y_wet_long.size(-1))
 
@@ -328,12 +287,12 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
 
             #print("x_dry_long", x_dry_long.shape, "y_wet_long", y_wet_long.shape, "max_length", max_length)
             x_long = torch.nn.functional.pad(x_long, (0, max_length - x_long.size(-1)), mode='constant', value=0)
-            y_wet_long = torch.nn.functional.pad(y_wet_long, (0, max_length - y_wet_long.size(-1)), mode='constant', value=0)
+            y_long = torch.nn.functional.pad(y_long, (0, max_length - y_long.size(-1)), mode='constant', value=0)
 
             #print("x_dry_long", x_dry_long.shape, "y_wet_long", y_wet_long.shape)
 
             assert x_long.size(-1)% self.segment_length == 0, "x_dry_long must be a multiple of segment_length, got {}".format(x_long.size(-1))
-            assert y_wet_long.size(-1)% self.segment_length == 0, "y_wet_long must be a multiple of segment_length, got {}".format(y_wet_long.size(-1))
+            assert y_long.size(-1)% self.segment_length == 0, "y_wet_long must be a multiple of segment_length, got {}".format(y_wet_long.size(-1))
 
             #assert now the two have the same length
             assert x_long.shape==y_wet_long.shape, "x_dry and y_wet must have the same shape, got {} and {}".format(x_long.shape, y_wet_long.shape)
@@ -376,48 +335,37 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.test_samples)
 
-class TencyMastering_Vocals_Test_v1(torch.utils.data.Dataset):
+class TencyMastering_Vocals(torch.utils.data.IterableDataset):
 
     def __init__(self,
         fs=44100,
         segment_length=131072,
-        skip=None,
         base_dir=None,
-        subdirs=None,
-        skip_list=None,
+        mode="dry-wet",
         normalize_params=None,
         align=False,
         align_mode=None,
         stereo=True,
         num_examples=4,
         RMS_threshold_dB=-40,
-        side_energy_threshold=-10,
         seed=42
         ):
 
         super().__init__()
-        #np.random.seed(seed)
+        print(num_examples, "num_examples")
 
-        base_path=os.path.join(base_dir)
+        np.random.seed(seed)
+        random.seed(seed)
+
+
 
         id_list=[]
-        for subdir in subdirs:
-            path=os.path.join(base_path,subdir)
-            id_list=glob.glob(os.path.join(path,"*"))
-
-        def filter_ids(path):
-            id_track=path.split("/")[-1]
-            partition=path.split("/")[-2]
-            id_name=partition+"/"+id_track
-            if id_name in skip_list:
-                return False
-            else:
-                return True
-
-        id_list=[x for x in id_list if filter_ids(x)]
+        id_list=glob.glob(os.path.join(base_dir, "dry","*"))
+    
         assert len(id_list)>0, "No files found in the dataset"
 
-        self.pair_list=process_id_list_lead_vocal(id_list)
+        self.id_list=id_list
+
         self.segment_length=segment_length
         self.fs=fs
 
@@ -453,97 +401,111 @@ class TencyMastering_Vocals_Test_v1(torch.utils.data.Dataset):
         elif self.normalize_mode is None:
             self.normaliser = lambda x: x
         
+
         self.RMS_threshold_dB=RMS_threshold_dB
 
         self.get_RMS=lambda x: 20 * torch.log10(torch.sqrt(torch.mean(x ** 2, dim=-1)))
 
-        self.side_energy_threshold=side_energy_threshold
+        self.mode=mode
 
-        self.test_samples = []
 
-        counter=0
+    def __iter__(self):
 
-        for dry_file, wet_file in self.pair_list:
-            if counter >= num_examples and num_examples!= -1:
-                break
+        while True:
+
+            #for id in tqdm(self.id_list):
+
+            num=np.random.randint(0,len(self.id_list)-1)
+
+            id=self.id_list[num]
+
+            #if counter >= num_examples and num_examples!= -1:
+            #    break
+            #print("mode", mode)
+
+            if self.mode=="dry-wet":
+                dry_file=id / "dry" / "vocals.wav"
+
+                assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)    
+
+            
+            elif self.mode=="dryfxnorm-wet":
+                
+                dry_file=id / "dry" / "vocals_normalized.wav"
+
+                assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)
+
+                
+            elif self.mode=="wetfxnorm-wet":
+
+                dry_file=id / "wet" / "vocals_normalized.wav"
+
+                assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)    
+
+
+            wet_file=id / "wet" / "vocals.wav"
+            assert wet_file.exists(), "wet file does not exist: {}".format(wet_file)
+
 
             dry_duration, dry_total_frames, dry_samplerate=get_audio_length(dry_file)
             wet_duration, wet_total_frames, wet_samplerate=get_audio_length(wet_file)
 
-            total_frames=min(dry_total_frames, wet_total_frames)
+            assert dry_total_frames== wet_total_frames, "dry and wet files must have the same number of frames, got {} and {}".format(dry_total_frames, wet_total_frames)
 
-            #sample "start" uniformly in the range [0, total_frames-seg_len]
-            #start=np.random.randint(0,total_frames-self.segment_length)
+            total_frames=dry_total_frames
 
-            start=total_frames//2 #fixed
+            start=np.random.randint(0,total_frames-self.segment_length)
             end=start+ self.segment_length
 
-            if self.align and self.align_mode=="pickle":
-                    #aligning using a pickle file with a dictionary, as done for GRAFx
+            out=load_audio(dry_file, start, end, stereo=self.stereo)
 
-                    #dry_file is path/sond_id/dry/track.wav
-                    #pickle_file is path/song_id/alignment.pickle
-
-                    alignment_file=dry_file.parent.parent / "alignment.pickle"
-                    alignment_data = pickle.load(open(alignment_file, "rb"))
-
-                    dry_align=alignment_data.get("dry_alignment",0)
-                    #multi_align=alignment_data.get("multi_alignment",0)
-                    print("dry_align", dry_align)
-
-                    dry_start = start - dry_align
-                    dry_end= dry_start + self.segment_length
-            else:
-                dry_start = start
-                dry_end= dry_start + self.segment_length
-
-
-            out= load_audio(dry_file, dry_start, dry_end, stereo=self.stereo)
             if out is None:
                 continue
             else:
                 x_dry, fs=out
-
-            assert fs==self.fs, "wrong sampling rate: {}".format(fs)
-            
-            if not check_side_energy(x_dry, dry_file, side_energy_threshold=self.side_energy_threshold):
-                continue
+                assert fs==self.fs, "wrong sampling rate: {}".format(fs)
+                
 
             out= load_audio(wet_file, start, end, stereo=self.stereo)
+
             if out is None:
-                continue    
+                continue
             else:
                 y_wet, fs=out
-
-            assert fs==self.fs, "wrong sampling rate: {}".format(fs)
+                assert fs==self.fs, "wrong sampling rate: {}".format(fs)
+                
+            
+            assert self.align==False, "align is not supported yet for this dataset"
 
             RMS_dB=self.get_RMS(y_wet.mean(0))
             if RMS_dB<self.RMS_threshold_dB:
                 continue
 
-            if self.align:
-                if self.align_mode=="cross_correlation":
-                    #do that on GPU if it is slow
-                    shifts = find_time_offset(x_dry.mean(0), y_wet.mean(0), margin=3000).item()
-                    #TODO: ensure shifts is small, otherwise skip
-                    x_dry = torch.roll(x_dry, shifts=int(shifts), dims=1)
-
-
             if self.normalize_mode is not None:
-                if "dry" in self.normalize_mode:
-                    #potentially slow
-                    x_dry=self.normaliser(x_dry)
 
-                    if torch.isnan(x_dry).any():
-                        continue
-                else:
-                    pass
+                    if "dry" in self.normalize_mode:
+                        #potentially slow
+                        x_dry=self.normaliser(x_dry)
+                        
+                        #detect NaNs here
 
-            self.test_samples.append(( y_wet, x_dry))
-            counter+=1
+                        if torch.isnan(x_dry).any():
+                            continue
+
+                    else:
+                        pass
+                
+
+            yield  y_wet, x_dry
+
+            #except Exception as e:
+            #    print(e)
+            #    continue
 
     def __getitem__(self, idx):
         return self.test_samples[idx]
 
     def __len__(self):
         return len(self.test_samples)
+
+
