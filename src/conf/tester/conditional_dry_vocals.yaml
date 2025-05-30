@@ -42,6 +42,7 @@ unconditional:
 
 #logging configuration
 wandb:
-  use: False
+  use: True
+  num_examples_to_log: 8
   log_every: 10
   run_name: "2nd-order-Heun-unconditional"
