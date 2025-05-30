@@ -257,6 +257,8 @@ class EDM_LDM(SDE):
 
         with torch.no_grad():
             y=self.transform_forward(y, compile=True)
+            print("y", y.std())
+
             if context is not None:
                 context=self.transform_forward(context, compile=True)
 

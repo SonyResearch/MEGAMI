@@ -169,6 +169,33 @@ def load_state_dict( state_dict, network=None, ema=None, optimizer=None, log=Tru
                 print("Could not load state dict")
                 print(e)
         try:
+            print("assuming the network was saved from a DDP model, and I forgot to add .module to the keys")
+            #verify that the keys are the same but with .module removed
+            if network is not None:
+                network_state_dict = network.state_dict()
+                for key in list(state_dict['network'].keys()):
+                    print("checking", key)
+                    if key.startswith('module.'):
+                        new_key = key.replace('module.', '')
+                        state_dict['network'][new_key] = state_dict['network'].pop(key)
+
+                network.load_state_dict(state_dict['network'])
+            
+            if optimizer is not None:
+                optimizer.load_state_dict(state_dict['optimizer'])
+            if ema is not None:
+                ema.load_state_dict(state_dict['ema'])
+
+            print("loaded state dict with .module removed from the keys")
+
+            return True
+
+        except Exception as e:
+            if log:
+                print("Could not load state dict")
+                print(e)
+
+        try:
             if log: print("Attempt 2: trying with strict=False")
             if network is not None:
                 network.load_state_dict(state_dict['network'], strict=False)

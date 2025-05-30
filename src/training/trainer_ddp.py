@@ -191,22 +191,40 @@ class Trainer():
                 return False
 
     def state_dict(self):
-        if self.args.exp.compile:
-            return {
-                'it': self.it,
-                'network': self.network._orig_mod.state_dict(),
-                'optimizer': self.optimizer.state_dict(),
-                'ema': self.ema.state_dict(),
-                'args': self.args,
-            }
+        if self.distributed:
+            if self.args.exp.compile:
+                return {
+                    'it': self.it,
+                    'network': self.network._orig_mod.module.state_dict(),
+                    'optimizer': self.optimizer.state_dict(),
+                    'ema': self.ema.state_dict(),
+                    'args': self.args,
+                }
+            else:
+                return {
+                    'it': self.it,
+                    'network': self.network.module.state_dict(),
+                    'optimizer': self.optimizer.state_dict(),
+                    'ema': self.ema.state_dict(),
+                    'args': self.args,
+                }
         else:
-            return {
-                'it': self.it,
-                'network': self.network.state_dict(),
-                'optimizer': self.optimizer.state_dict(),
-                'ema': self.ema.state_dict(),
-                'args': self.args,
-            }
+            if self.args.exp.compile:
+                return {
+                    'it': self.it,
+                    'network': self.network._orig_mod.state_dict(),
+                    'optimizer': self.optimizer.state_dict(),
+                    'ema': self.ema.state_dict(),
+                    'args': self.args,
+                }
+            else:
+                return {
+                    'it': self.it,
+                    'network': self.network.state_dict(),
+                    'optimizer': self.optimizer.state_dict(),
+                    'ema': self.ema.state_dict(),
+                    'args': self.args,
+                }
 
     def save_checkpoint(self):
         save_basename = f"{self.args.exp.exp_name}-{self.it}.pt"
