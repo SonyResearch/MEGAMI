@@ -2,7 +2,7 @@
 defaults:
   - dset: tencymastering_vocals_fxnorm_server5
   - network: Latent_DiT_M2L4
-  - diff_params: edm_LDM_M2L4
+  - diff_params: edm_LDM_M2L4_noisycontext
   - tester: evaluate_conditional_dry_vocals
   - logging: base_logging
 

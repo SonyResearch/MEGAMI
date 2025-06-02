@@ -10,10 +10,8 @@ model_dir: "/data4/eloi/experiments/1A_tencymastering_vocals_M2L4"
 
 dset:
   train:
-    mode: "dry-wet"  # dryf for dry fxnorm, dry for dry, wet for wet
     segment_length: 525312  # Replace with your desired value
   validation:
-    mode: "dry-wet"  # dryf for dry fxnorm, dry for dry, wet for wet
     segment_length: 525312  # If you want to change validation segment length too
 
 

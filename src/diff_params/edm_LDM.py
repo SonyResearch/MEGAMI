@@ -20,7 +20,8 @@ class EDM_LDM(SDE):
         AE_type,
         sde_hp,
         cfg_dropout_prob,
-        default_shape
+        default_shape,
+        context_preproc=None,
         ):
 
         super().__init__(type, sde_hp)
@@ -31,6 +32,8 @@ class EDM_LDM(SDE):
         self.rho = self.sde_hp.rho
 
         self.default_shape = torch.Size(default_shape)
+
+        self.context_preproc = context_preproc
 
         try:
             self.max_t= self.sde_hp.max_sigma
@@ -240,6 +243,7 @@ class EDM_LDM(SDE):
 
         return cin * x_perturbed, target, cnoise
 
+
     def loss_fn(self, net, sample=None, context=None, *args, **kwargs):
         """
         Loss function, which is the mean squared error between the denoised latent and the clean latent
@@ -251,16 +255,17 @@ class EDM_LDM(SDE):
 
         y=sample
 
+
         t = self.sample_time_training(y.shape[0]).to(y.device)
-
-
 
         with torch.no_grad():
             y=self.transform_forward(y, compile=True)
             print("y", y.std())
 
             if context is not None:
-                context=self.transform_forward(context, compile=True)
+
+
+                context=self.transform_forward(context, compile=True, is_condition=True, is_test=False)
 
                 if self.cfg_dropout_prob > 0.0:
                     #context=self.transform_forward(context)
@@ -337,9 +342,25 @@ class EDM_LDM(SDE):
 
 
         
-    def transform_forward(self, x, compile=False, is_condition=False):
+    def transform_forward(self, x, compile=False, is_condition=False, is_test=False):
         #TODO: Apply forward transform here
         #fake stereo
+
+        if is_condition:
+            if self.context_preproc is not None:
+                    if self.context_preproc.add_noise:
+                        if self.context_preproc.noise_type=="pink":
+                            #add pink noise to context
+                            print("Adding pink noise to context")
+                            SNR_mean= self.context_preproc.SNR_mean
+                            SNR_std= self.context_preproc.SNR_std   
+                            if is_test:
+                                SNR_std=0.0
+                            SNR= torch.randn(x.shape[0], device=x.device) * SNR_std + SNR_mean
+                            x= utils.add_pink_noise(x, SNR)
+                        else:
+                            raise NotImplementedError("Only pink noise is implemented for now")
+
         if compile:
             z=self.AE_encode_compiled(x)
         else:

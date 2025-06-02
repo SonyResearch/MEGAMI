@@ -29,9 +29,23 @@ def _main(args):
                                                worker_init_fn=worker_init_fn, timeout=0, prefetch_factor=20)
     train_loader = iter(train_loader)
 
+    val_set_dict = {}
     val_set = hydra.utils.instantiate(args.dset.validation)
     val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=1, num_workers=args.exp.num_workers,
                                                   pin_memory=True, worker_init_fn=worker_init_fn)
+    val_set_dict[args.dset.validation.mode] = val_loader
+
+    try:
+        val_set_2 = hydra.utils.instantiate(args.dset.validation_2)
+        val_loader_2 = torch.utils.data.DataLoader(dataset=val_set_2, batch_size=1, num_workers=args.exp.num_workers,
+                                                  pin_memory=True, worker_init_fn=worker_init_fn)
+        val_set_dict[args.dset.validation_2.mode] = val_loader_2
+    except:
+        print("Second validation set not found, using only first one")
+        pass
+    
+    print("Validation set keys:")
+    print(val_set_dict.keys())
 
     # Diffusion parameters
     diff_params = hydra.utils.instantiate(args.diff_params)  # instantiate in trainer better
@@ -54,7 +68,7 @@ def _main(args):
     from testing.tester import Tester
     import copy
     network_tester = copy.deepcopy(network).eval().requires_grad_(False)
-    tester = Tester(args, network_tester, diff_params, device=device, in_training=True, test_set=val_set)
+    tester = Tester(args, network_tester, diff_params, device=device, in_training=True, test_set_dict=val_set_dict)
 
     # Trainer
     #print(args.exp.trainer)

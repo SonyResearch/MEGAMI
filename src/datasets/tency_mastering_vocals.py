@@ -208,12 +208,13 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
         counter=0
 
         #for dry_file, wet_file in tqdm(self.pair_list):
-        for id in tqdm(self.id_list):
+        for id_i in tqdm(self.id_list):
             #if counter >= num_examples and num_examples!= -1:
             #    break
             print("mode", mode)
             if mode=="dry-wet":
-                dry_file=id / "dry" / "vocals.wav"
+                dry_file=os.path.join(id_i, "vocals.wav")
+                dry_file=Path(dry_file)
 
                 assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)    
 
@@ -230,7 +231,9 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
             
             elif mode=="dryfxnorm-wet":
                 
-                dry_file=id / "dry" / "vocals_normalized.wav"
+                #dry_file=id / "dry" / "vocals_normalized.wav"
+                dry_file=os.path.join(id_i, "vocals_normalized.wav") 
+                dry_file=Path(dry_file)
 
                 assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)
 
@@ -247,7 +250,9 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
                 
             elif mode=="wetfxnorm-wet":
 
-                dry_file=id / "wet" / "vocals_normalized.wav"
+                #dry_file=id / "wet" / "vocals_normalized.wav"
+                dry_file=os.path.join(id_i, "vocals_normalized.wav").replace("dry", "wet")
+                dry_file=Path(dry_file)
 
                 assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)    
 
@@ -262,7 +267,9 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
                 x_long= x_dry_long
 
                 
-            wet_file=id / "wet" / "vocals.wav"
+            #wet_file=id / "wet" / "vocals.wav"
+            wet_file=os.path.join(id_i,"vocals.wav").replace("dry", "wet")
+            wet_file=Path(wet_file)
 
             assert wet_file.exists(), "wet file does not exist: {}".format(wet_file)
 
@@ -295,13 +302,13 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
             assert y_long.size(-1)% self.segment_length == 0, "y_wet_long must be a multiple of segment_length, got {}".format(y_wet_long.size(-1))
 
             #assert now the two have the same length
-            assert x_long.shape==y_wet_long.shape, "x_dry and y_wet must have the same shape, got {} and {}".format(x_long.shape, y_wet_long.shape)
+            assert x_long.shape==y_long.shape, "x_dry and y_wet must have the same shape, got {} and {}".format(x_long.shape, y_wet_long.shape)
 
             #divide into non-overlapping segments of segment_length
 
             for i in range(0, x_long.size(-1), self.segment_length):
                 x_dry = x_long[:, i:i + self.segment_length]
-                y_wet = y_wet_long[:, i:i + self.segment_length]
+                y_wet = y_long[:, i:i + self.segment_length]
 
                 RMS_dB=self.get_RMS(y_wet.mean(0))
                 if RMS_dB<self.RMS_threshold_dB:
@@ -424,26 +431,31 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
             #print("mode", mode)
 
             if self.mode=="dry-wet":
-                dry_file=id / "dry" / "vocals.wav"
+                dry_file=os.path.join(id, "vocals.wav") 
+                dry_file=Path(dry_file)
 
                 assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)    
 
             
             elif self.mode=="dryfxnorm-wet":
                 
-                dry_file=id / "dry" / "vocals_normalized.wav"
+                dry_file=os.path.join(id, "vocals_normalized.wav")
+                dry_file=Path(dry_file)
 
                 assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)
 
                 
             elif self.mode=="wetfxnorm-wet":
 
-                dry_file=id / "wet" / "vocals_normalized.wav"
+                dry_file=os.path.join(id, "vocals_normalized.wav").replace("dry", "wet")
+                dry_file=Path(dry_file)
 
                 assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)    
 
 
-            wet_file=id / "wet" / "vocals.wav"
+            wet_file=os.path.join(id,"vocals.wav").replace("dry", "wet")
+            wet_file=Path(wet_file)
+
             assert wet_file.exists(), "wet file does not exist: {}".format(wet_file)
 
 

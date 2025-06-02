@@ -151,7 +151,8 @@ class SamplerEulerHeun(Sampler):
             x, x_den = self.step(x, t[i], t[i + 1], gamma[i], blind)
 
 
-        x_den_wave=self.diff_params.transform_inverse(x_den.detach())
+        with torch.no_grad():
+            x_den_wave=self.diff_params.transform_inverse(x_den.detach())
 
         return x_den_wave.detach(), None
 

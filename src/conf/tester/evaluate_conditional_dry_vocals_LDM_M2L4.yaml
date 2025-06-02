@@ -10,17 +10,30 @@ modes: ["conditional_dry_vocals"] #modes to test
 
 
 compute_metrics: True #if true, the metrics will be computed after sampling
+#metrics: ["pairwise-spectral", "pairwise-panning", "pairwise-dynamic", "pairwise-loudness", "pairwise-mss-lr", "pairwise-mss-ms", "pairwise-mldr-lr", "pairwise-mldr-ms", "pairwise-fx_encoder", "pairwise-AFxRep"]
 
-metrics: ["pairwise-spectral", "pairwise-panning", "pairwise-dynamic", "pairwise-loudness", "pairwise-mss-lr", "pairwise-mss-ms", "pairwise-mldr-lr", "pairwise-mldr-ms", "pairwise-fx_encoder"]
+metrics:
+  - "pairwise-spectral"
+  - "pairwise-panning"
+  - "pairwise-dynamic"
+  - "pairwise-loudness"
+  - "pairwise-mss-lr"
+  - "pairwise-mss-ms"
+  - "pairwise-mldr-lr"
+  - "pairwise-mldr-ms"
+  - "pairwise-fx_encoder"
+  - "pairwise-AFxRep"
 
 checkpoint: None
 
+batch_size: 20 #batch size for sampling, should be 1 for conditional sampling
+
 sampling_params:
-  same_as_training: True #if true, the sampling parameters will be the same as the ones used for training (sigma_data, sigma_min, sigma_max and rho)
+  same_as_training: False #if true, the sampling parameters will be the same as the ones used for training (sigma_data, sigma_min, sigma_max and rho)
   sde_hp:
-    sigma_data: 0.05 #default for maestro
+    sigma_data: 0.5 #default for maestro
     sigma_min: 1e-4
-    sigma_max: 10 #this is sigma_start
+    sigma_max: 100 #this is sigma_start
     rho: 10
   Schurn: 10
   Snoise: 1
@@ -38,15 +51,13 @@ unconditional:
   num_samples: 1
   audio_len: 525312
 
-
 fx_encoder_args:
   distance_type: "cosine" #distance metric to use for the fx encoder
-  ckpt_path: "utils/feature_extractors/fx_encoder/ckpt/fxenc_default.pt"
+  ckpt_path: "utils/feature_extractors/ckpt/fxenc_default.pt"
   
 AFxRep_args:
   distance_type: "cosine" #distance metric to use for the AFxRep
   ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/tmp/afx-rep.ckpt"
-
 
 
 #logging configuration
@@ -54,6 +65,7 @@ wandb:
   use: True
   entity: "eloimoliner"
   project: "project_test"
-  num_examples_to_log: 4
+  num_examples_to_log: 8
   log_every: 10
   run_name: "test-conditional-dry-vocals-diffSTFT"
+  tags: Null

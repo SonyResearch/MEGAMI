@@ -10,7 +10,7 @@ modes: ["conditional_dry_vocals"] #modes to test
 
 
 compute_metrics: True #if true, the metrics will be computed after sampling
-metrics: ["pairwise-spectral", "pairwise-panning", "pairwise-dynamic", "pairwise-loudness", "pairwise-mss-lr", "pairwise-mss-ms" ]
+metrics: ["pairwise-spectral", "pairwise-panning", "pairwise-dynamic", "pairwise-loudness", "pairwise-mss-lr", "pairwise-mss-ms", "pairwise-mldr-lr", "pairwise-mldr-ms", "pairwise-fx_encoder"]
 
 checkpoint: None
 
@@ -29,7 +29,7 @@ sampling_params:
   T: 51 #number of discretization steprs
   schedule: "edm" #"log": log schedule using the parameters in sampling_params
 
-cfg_scale: 2.0
+cfg_scale: 1.0
 
 #experiment configuration for different testing modes
 
@@ -46,3 +46,4 @@ wandb:
   num_examples_to_log: 8
   log_every: 10
   run_name: "test-conditional-dry-vocals-diffSTFT"
+  tags: Null

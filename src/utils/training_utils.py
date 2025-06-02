@@ -495,3 +495,67 @@ def align_batch(y, x, sample_rate):
     #x = torch.stack([torch.roll(x[i], shifts=shifts[i].item(), dims=-1) for i in range(x.shape[0])])
 
     return y.to(y_device).to(y_dtype), x.to(x_device).to(x_dtype)
+
+
+def generate_pink_noise(shape, device='cpu'):
+    """
+    Generate pink noise with 1/f frequency scaling for a batch of stereo signals.
+    
+    Args:
+        shape (tuple): Shape of the noise signal (B, 2, T).
+        device (str): Device for tensor computation ('cpu' or 'cuda').
+    
+    Returns:
+        torch.Tensor: Pink noise signal with shape (B, 2, T).
+    """
+    B, C, T = shape
+    
+    # Generate white noise
+    white_noise = torch.randn(B, C, T, device=device)
+    
+    # Perform FFT to move to frequency domain
+    fft = torch.fft.rfft(white_noise, dim=-1)
+    
+    # Generate frequency bins
+    freqs = torch.fft.rfftfreq(T, d=1.0).to(device)
+    
+    # Scale the amplitude by 1/sqrt(frequency) to approximate pink noise
+    # Avoid division by zero by clamping frequencies to a minimum value
+    fft /= torch.sqrt(torch.clamp(freqs, min=1e-6)).unsqueeze(0).unsqueeze(0)
+    
+    # Perform inverse FFT to return to time domain
+    pink_noise = torch.fft.irfft(fft, n=T, dim=-1)
+    
+    return pink_noise
+
+def add_pink_noise(signal, snr_db):
+    """
+    Add pink noise to a signal based on the desired SNR.
+    
+    Args:
+        signal (torch.Tensor): Original signal with shape (B, 2, T).
+        snr_db (float): Desired Signal-to-Noise Ratio in decibels.
+    
+    Returns:
+        torch.Tensor: Noisy signal with the specified SNR.
+    """
+    # Calculate signal power
+    signal_power = torch.mean(signal ** 2, dim=(-1, -2), keepdim=True)
+
+    
+    # Calculate noise power based on desired SNR
+    snr_linear = 10 ** (snr_db / 10)
+    noise_power = signal_power / snr_linear.view(-1, 1, 1)  # Adjust shape for broadcasting
+    
+    # Generate pink noise
+    pink_noise = generate_pink_noise(signal.shape, device=signal.device)
+    
+    # Scale pink noise to achieve the desired noise power
+    noise_scaling_factor = torch.sqrt(noise_power / torch.mean(pink_noise ** 2, dim=-1, keepdim=True))
+
+    scaled_noise = pink_noise * noise_scaling_factor
+    
+    # Add scaled noise to the original signal
+    noisy_signal = signal + scaled_noise
+    
+    return noisy_signal

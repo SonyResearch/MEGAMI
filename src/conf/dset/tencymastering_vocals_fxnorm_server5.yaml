@@ -2,7 +2,7 @@
 train:
   _target_: datasets.tency_mastering_vocals.TencyMastering_Vocals
   base_dir: "/data5/eloi/TencyMastering_vocals/train"
-  mode: "dry-wet"
+  mode: "wetfxnorm-wet"
   segment_length: 525312
   fs: 44100
   stereo: True
@@ -27,7 +27,7 @@ train:
 validation:
   _target_: datasets.tency_mastering_vocals.TencyMastering_Vocals_Test
   base_dir: "/data5/eloi/TencyMastering_vocals/validation"
-  mode: "dry-wet"
+  mode: "wetfxnorm-wet"
   segment_length: 525312
   fs: 44100
   stereo: True
@@ -49,7 +49,30 @@ validation:
   #random seed
   seed: 42
 
+validation_2:
+  _target_: datasets.tency_mastering_vocals.TencyMastering_Vocals_Test
+  base_dir: "/data5/eloi/TencyMastering_vocals/validation"
+  mode: "dryfxnorm-wet"
+  segment_length: 525312
+  fs: 44100
+  stereo: True
 
+  align: False
+  align_mode: "pickle"
+
+  normalize_params:
+    normalize_mode: "loudness_dry"
+    loudness_dry: -18.0
+    #normalize_mode: "rms_dry"
+    #rms_dry: -18
+    #normalize_mode: Null
+
+  num_examples: 100
+
+  RMS_threshold_dB: -40.0
+ 
+  #random seed
+  seed: 42
 
 test:
   _target_: datasets.tency_mastering_vocals.TencyMastering_Vocals_Test

@@ -19,14 +19,15 @@ import torchaudio
 
 class Tester():
     def __init__(
-            self, args, network, diff_params, test_set=None, device=None,
+            self, args, network, diff_params, test_set_dict=None, device=None,
             in_training=False,
     ):
         self.args = args
         self.network = network
         self.diff_params = copy.copy(diff_params)
         self.device = device
-        self.test_set = test_set
+        self.test_set_dict= test_set_dict
+
         self.use_wandb = False  # hardcoded for now
         self.in_training = in_training
         self.sampler = hydra.utils.instantiate(args.tester.sampler, self.network, self.diff_params, self.args)
@@ -55,7 +56,7 @@ class Tester():
             self.args, resolve=True, throw_on_missing=True
         )
         self.wandb_run = wandb.init(project="testing" + self.args.tester.wandb.project, entity=self.args.tester.wandb.entity,
-                                    config=config)
+                                    config=config, tags=self.args.tester.wandb.tags)
         #wandb.watch(self.network,
         #            log_freq=self.args.logging.heavy_log_interval)
 
@@ -196,54 +197,73 @@ class Tester():
         for metric in metrics:
             if "pairwise" in metric:
                 from evaluation.pairwise_metrics import metric_factory
-                metrics_dict[metric]=metric_factory(metric, self.args.exp.sample_rate)
+                metrics_dict[metric]=metric_factory(metric, self.args.exp.sample_rate,  **self.args.tester)
 
         return metrics_dict
             
-    def test_conditional(self, mode):
+    def test_conditional(self, mode, exp_description=""):
 
-        assert len(self.test_set) != 0, "No samples found in test set"
+        for k, test_set in self.test_set_dict.items():
 
-        dict_y = {}
-        dict_x = {}
-        dict_y_hat = {}
+            print(f"Testing on {k} set")
 
 
-        for i, (sample_y, sample_x ) in enumerate(tqdm(self.test_set)):
+            assert len(test_set) != 0, "No samples found in test set"
+    
+            dict_y = {}
+            dict_x = {}
+            dict_y_hat = {}
+    
 
+            i=0
+    
+            for sample_y, sample_x  in tqdm(test_set):
+    
+    
+                #print("sample_x", sample_x, "sample_y", sample_y)
 
-            #print("sample_x", sample_x, "sample_y", sample_y)
+                B, C, T = sample_y.shape
+    
 
-            sample_y = sample_y.to(self.device).float().unsqueeze(0)
-            sample_x = sample_x.to(self.device).float().unsqueeze(0)
-            #print("sample_y", sample_y.shape, "sample_x", sample_x.shape)
+                sample_y = sample_y.to(self.device).float()
+                sample_x = sample_x.to(self.device).float()
 
-            preds=self.sample_conditional(mode, sample_x)
+                if sample_y.dim()==2:
+                    sample_y = sample_y.unsqueeze(0)
+                if sample_x.dim()==2:
+                    sample_x = sample_x.unsqueeze(0)
+                #print("sample_y", sample_y.shape, "sample_x", sample_x.shape)
+    
+                preds=self.sample_conditional(mode, sample_x, B=B)
 
-            if self.use_wandb:
+                for b in range(B):
 
-                if i < self.args.tester.wandb.num_examples_to_log:  # Log only first 10 samples
-                    if self.in_training:
-                        self.log_audio(preds[0], f"pred_{i}", it=self.it)  # Just log first sample
-                        self.log_audio(sample_y[0], f"original_wet_{i}", it=self.it)  # Just log first sample
-                        self.log_audio(sample_x[0], f"original_dry_{i}", it=self.it)  # Just log first sample
-                    else:
-                        self.log_audio(preds[0], f"pred", it=i)  # Just log first sample
-                        self.log_audio(sample_y[0], f"original_wet", it=i)  # Just log first sample
-                        self.log_audio(sample_x[0], f"original_dry", it=i)  # Just log first sample
-            
-            dict_y[i] = sample_y[0].detach().cpu().numpy()
-            dict_x[i] = sample_x[0].detach().cpu().numpy()
-            dict_y_hat[i] = preds[0].detach().cpu().numpy()
+                    if self.use_wandb:
         
-        if self.args.tester.compute_metrics:
-            for metric in self.metrics_dict.keys():
-                print(f"Computing metric {metric}")
-                result, result_dict=self.metrics_dict[metric].compute(dict_y, dict_y_hat, dict_x)
+                        if i < self.args.tester.wandb.num_examples_to_log:  # Log only first 10 samples
+                            if self.in_training:
+                                self.log_audio(preds[b], f"pred_{k}_{i}", it=self.it)  # Just log first sample
+                                self.log_audio(sample_y[b], f"original_wet_{k}_{i}", it=self.it)  # Just log first sample
+                                self.log_audio(sample_x[b], f"original_dry_{k}_{i}", it=self.it)  # Just log first sample
+                            else:
+                                self.log_audio(preds[b], f"pred_{k}", it=i)  # Just log first sample
+                                self.log_audio(sample_y[b], f"original_wet_{k}", it=i)  # Just log first sample
+                                self.log_audio(sample_x[b], f"original_dry_{k}", it=i)  # Just log first sample
+                    
+                    dict_y[i] = sample_y[b].detach().cpu().numpy()
+                    dict_x[i] = sample_x[b].detach().cpu().numpy()
+                    dict_y_hat[i] = preds[b].detach().cpu().numpy()
 
-                if self.use_wandb:
-                    print(f"Logging metric {metric} to wandb")
-                    self.log_metric(result, metric, step=self.it)
+                    i += 1
+            
+            if self.args.tester.compute_metrics:
+                for metric in self.metrics_dict.keys():
+                    print(f"Computing metric {metric}")
+                    result, result_dict=self.metrics_dict[metric].compute(dict_y, dict_y_hat, dict_x)
+    
+                    if self.use_wandb:
+                        print(f"Logging metric {metric} to wandb")
+                        self.log_metric(result, metric+"_"+k, step=self.it)
 
 
     def sample_conditional_style(self, mode, cond):
@@ -258,13 +278,15 @@ class Tester():
 
         return preds
 
-    def sample_conditional(self, mode, cond):
+    def sample_conditional(self, mode, cond, B=1):
         # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
         audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
         #shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
         shape=self.sampler.diff_params.default_shape
+        shape= [B, *shape[1:]]  # B is the batch size, we want to sample B samples
 
-        cond=self.sampler.diff_params.transform_forward(cond,is_condition=True)
+        with torch.no_grad():
+            cond=self.sampler.diff_params.transform_forward(cond,is_condition=True, is_test=True)
         
         preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device)
 
