@@ -145,6 +145,7 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
         stereo=True,
         num_examples=4,
         RMS_threshold_dB=-40,
+        x_as_mono=False,
         seed=42
         ):
 
@@ -199,6 +200,8 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
             self.normaliser = lambda x: x
         
 
+        self.x_as_mono=x_as_mono
+
         self.RMS_threshold_dB=RMS_threshold_dB
 
         self.get_RMS=lambda x: 20 * torch.log10(torch.sqrt(torch.mean(x ** 2, dim=-1)))
@@ -247,11 +250,47 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
                 
                 x_long= x_dry_long
 
+            elif mode=="dryfxnormdr-wet":
+                
+                #dry_file=id / "dry" / "vocals_normalized.wav"
+                dry_file=os.path.join(id_i, "vocals_normalized_dr.wav") 
+                dry_file=Path(dry_file)
+
+                assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)
+
+                out= load_audio(dry_file, stereo=self.stereo)
+
+                if out is None:
+                    continue
+                else:
+                    x_dry_long, fs=out
+                    assert fs==self.fs, "wrong sampling rate: {}".format(fs)
+                
+                x_long= x_dry_long
+
                 
             elif mode=="wetfxnorm-wet":
 
                 #dry_file=id / "wet" / "vocals_normalized.wav"
                 dry_file=os.path.join(id_i, "vocals_normalized.wav").replace("dry", "wet")
+                dry_file=Path(dry_file)
+
+                assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)    
+
+                out= load_audio(dry_file, stereo=self.stereo)
+
+                if out is None:
+                    continue
+                else:
+                    x_dry_long, fs=out
+                    assert fs==self.fs, "wrong sampling rate: {}".format(fs)
+                
+                x_long= x_dry_long
+
+            elif mode=="wetfxnormdr-wet":
+
+                #dry_file=id / "wet" / "vocals_normalized.wav"
+                dry_file=os.path.join(id_i, "vocals_normalized_dr.wav").replace("dry", "wet")
                 dry_file=Path(dry_file)
 
                 assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)    
@@ -324,6 +363,10 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
                     else:
                         pass
 
+                if self.x_as_mono:
+                    x_dry = x_dry.mean(dim=0, keepdim=True)
+                    x_dry= torch.cat((x_dry, x_dry), dim=0)
+
                 #print("x_dry", x_dry.shape, "y_wet", y_wet.shape)
                 self.test_samples.append(( y_wet, x_dry)) 
                 counter+=1
@@ -355,7 +398,9 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
         stereo=True,
         num_examples=4,
         RMS_threshold_dB=-40,
-        seed=42
+        seed=42,
+        x_as_mono=False,
+        effect_randomizer=None
         ):
 
         super().__init__()
@@ -415,10 +460,14 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
 
         self.mode=mode
 
+        self.effect_randomizer=effect_randomizer
+
+        self.x_as_mono=x_as_mono
 
     def __iter__(self):
 
         while True:
+            #print("Iterating over TencyMastering_Vocals dataset")
 
             #for id in tqdm(self.id_list):
 
@@ -444,10 +493,24 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
 
                 assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)
 
+            elif self.mode=="dryfxnormdr-wet":
+                
+                dry_file=os.path.join(id, "vocals_normalized_dr.wav")
+                dry_file=Path(dry_file)
+
+                assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)
+
                 
             elif self.mode=="wetfxnorm-wet":
 
                 dry_file=os.path.join(id, "vocals_normalized.wav").replace("dry", "wet")
+                dry_file=Path(dry_file)
+
+                assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)    
+
+            elif self.mode=="wetfxnormdr-wet":
+
+                dry_file=os.path.join(id, "vocals_normalized_dr.wav").replace("dry", "wet")
                 dry_file=Path(dry_file)
 
                 assert dry_file.exists(), "dry file does not exist: {}".format(dry_file)    
@@ -507,6 +570,15 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
                     else:
                         pass
                 
+            if self.effect_randomizer is not None:
+                #apply random effects
+                #print("Applying random effect")
+                x_dry=self.effect_randomizer.apply_random_effect(x_dry, std_range=2.0)
+                #print("x_dry after effect", x_dry.shape)
+            
+            if self.x_as_mono:
+                x_dry = x_dry.mean(dim=0, keepdim=True)
+                x_dry= torch.cat((x_dry, x_dry), dim=0)
 
             yield  y_wet, x_dry
 

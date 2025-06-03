@@ -100,7 +100,6 @@ class Trainer():
                     self.tester.setup_wandb_run(self.wandb_run)
                 self.setup_logging_variables()
         
-        #self.network=torch.compile(self.network)
 
     def setup_wandb(self):
         """
@@ -288,6 +287,7 @@ class Trainer():
                 apply = torch.rand(x.shape[0]) > prob
                 y[apply] *= -1
                 x[apply] *= -1
+            
 
             else:
                 print("augmentation not implemented: " + a)
@@ -336,7 +336,7 @@ class Trainer():
 
 
         y, x = self.get_batch()
-        #print("y", y.shape, y.dtype, "x", x.shape, x.dtype)
+        print("y", y.shape, y.dtype, "x", x.shape, x.dtype)
 
 
         #print("sync", self.rank)
@@ -344,7 +344,11 @@ class Trainer():
             dist.barrier()
 
         #print("sample", sample.std(), sample.shape)
+        #try:
         error, sigma = self.diff_params.loss_fn(self.network, sample=y, context=x, ema=self.ema)
+        #except Exception as e:
+        #    print(e)
+        #    return
         #error, sigma = self.diff_params.loss_fn(self.network, sample=y, ema=self.ema)
 
         #if error is a list, we need to process it separately
@@ -366,7 +370,6 @@ class Trainer():
 
                 if self.args.logging.log:
                     self.process_loss_for_logging(error, sigma)
-
         else:
             print("loss is NaN, skipping step")
 

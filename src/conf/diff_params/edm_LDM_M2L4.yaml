@@ -16,3 +16,10 @@ sde_hp:
   max_sigma: 100
 
 default_shape: [1, 64, 128]
+
+context_preproc: 
+  to_mono: True
+  add_noise: False
+  noise_type: "pink"
+  SNR_mean: 0.0
+  SNR_std: 0.0

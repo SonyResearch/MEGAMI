@@ -18,7 +18,7 @@ sde_hp:
 default_shape: [1, 64, 128]
 
 context_preproc: 
-  to_mono: False
+  to_mono: True
   add_noise: True
   noise_type: "pink"
   SNR_mean: -10.0

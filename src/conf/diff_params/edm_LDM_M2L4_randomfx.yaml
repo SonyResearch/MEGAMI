@@ -1,0 +1,26 @@
+#Elucidated Diffusion Model (Karras et al. 2022)
+_target_: "diff_params.edm_LDM.EDM_LDM"
+
+# SDE hyperparameters
+type: "ve_karras"
+
+AE_type: "Music2Latent4" 
+
+cfg_dropout_prob: 0.5
+
+sde_hp:
+  sigma_data: 0.5 #default for maestro
+  sigma_min: 1e-4
+  sigma_max: 100
+  rho: 10
+  max_sigma: 100
+
+default_shape: [1, 64, 128]
+
+effect_randomizer:
+    _target_: utils.diffvox.effect_randomizer.DiffvoxRandomizer
+    strategy: "uniform_from_gaussian_range"
+    fx: ${fx_model}
+    npz_path: "/home/eloi/projects/project_mfm_eloi/src/utils/diffvox/presets/internal/gaussian.npz"
+    info_path: "/home/eloi/projects/project_mfm_eloi/src/utils/diffvox/presets/internal/info.json"
+    std_range: 3

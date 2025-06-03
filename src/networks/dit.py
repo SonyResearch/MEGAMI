@@ -337,6 +337,7 @@ class DiffusionTransformer(nn.Module):
             sigma = step_t
 
         if cfg_scale != 1.0 and (cross_attn_cond is not None or prepend_cond is not None) and (cfg_interval[0] <= sigma <= cfg_interval[1]):
+            raise ValueError("CFG applied outside this module")
             # Classifier-free guidance
             # Concatenate conditioned and unconditioned inputs on the batch dimension            
             batch_inputs = torch.cat([x, x], dim=0)

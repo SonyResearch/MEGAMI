@@ -1,4 +1,6 @@
 from datetime import date
+import io
+import matplotlib.pyplot as plt
 from functools import partial
 import re
 import torch
@@ -104,6 +106,16 @@ class Tester():
         print(f"loading checkpoint {self.it}")
         return tr_utils.load_state_dict(state_dict, ema=self.network)
 
+    def log_figure(self, fig, name: str, step=None):
+        # Save the figure to a buffer
+        #buf = io.BytesIO()
+        #plt.savefig(buf, format='png')
+        #buf.seek(0)
+
+        self.wandb_run.log({name: wandb.Image(fig)}, 
+                           step=step if step is not None else self.it)
+
+
     def log_metric(self, value, name: str, step=None):
         self.wandb_run.log(
             {name: value},
@@ -195,9 +207,16 @@ class Tester():
     def prepare_metrics(self, metrics):
         metrics_dict = {}
         for metric in metrics:
+            print(f"Preparing metric {metric}")
             if "pairwise" in metric:
                 from evaluation.pairwise_metrics import metric_factory
                 metrics_dict[metric]=metric_factory(metric, self.args.exp.sample_rate,  **self.args.tester)
+            elif "fad" in metric:
+                from evaluation.FAD_metrics import metric_factory
+                metrics_dict[metric]=metric_factory(metric, self.args.exp.sample_rate, **self.args.tester)
+            elif "histogram" in metric:
+                from evaluation.feature_histograms import metric_factory
+                metrics_dict[metric] = metric_factory(metric, self.args.exp.sample_rate, **self.args.tester)
 
         return metrics_dict
             
@@ -216,6 +235,9 @@ class Tester():
     
 
             i=0
+
+            if not self.in_training:
+                self.it+= 1  # Increment iteration for testing, so we can log it in wandb
     
             for sample_y, sample_x  in tqdm(test_set):
     
@@ -241,30 +263,39 @@ class Tester():
                     if self.use_wandb:
         
                         if i < self.args.tester.wandb.num_examples_to_log:  # Log only first 10 samples
-                            if self.in_training:
-                                self.log_audio(preds[b], f"pred_{k}_{i}", it=self.it)  # Just log first sample
-                                self.log_audio(sample_y[b], f"original_wet_{k}_{i}", it=self.it)  # Just log first sample
-                                self.log_audio(sample_x[b], f"original_dry_{k}_{i}", it=self.it)  # Just log first sample
-                            else:
-                                self.log_audio(preds[b], f"pred_{k}", it=i)  # Just log first sample
-                                self.log_audio(sample_y[b], f"original_wet_{k}", it=i)  # Just log first sample
-                                self.log_audio(sample_x[b], f"original_dry_{k}", it=i)  # Just log first sample
+                            self.log_audio(preds[b], f"pred_{k}_{i}", it=self.it)  # Just log first sample
+                            self.log_audio(sample_y[b], f"original_wet_{k}_{i}", it=self.it)  # Just log first sample
+                            self.log_audio(sample_x[b], f"original_dry_{k}_{i}", it=self.it)  # Just log first sample
                     
                     dict_y[i] = sample_y[b].detach().cpu().numpy()
                     dict_x[i] = sample_x[b].detach().cpu().numpy()
                     dict_y_hat[i] = preds[b].detach().cpu().numpy()
 
                     i += 1
+                
             
             if self.args.tester.compute_metrics:
                 for metric in self.metrics_dict.keys():
                     print(f"Computing metric {metric}")
                     result, result_dict=self.metrics_dict[metric].compute(dict_y, dict_y_hat, dict_x)
     
+                    print("using wandb:", self.use_wandb)
                     if self.use_wandb:
-                        print(f"Logging metric {metric} to wandb")
-                        self.log_metric(result, metric+"_"+k, step=self.it)
+                        if result is not None:
+                            print(f"Logging metric {metric} to wandb")
+                            self.log_metric(result, metric+"_"+k, step=self.it )
 
+                        for key, value in result_dict.items():
+                            print(f"Logging {key} to wandb")
+                            if "figure" in key:
+                                # log figure as an image
+                                self.log_figure(value, key+"_"+k, step=self.it)
+                            else:
+                                self.log_metric(value, key+"_"+k, step=self.it)
+
+                    if not self.in_training:
+                        self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+                        
 
     def sample_conditional_style(self, mode, cond):
         # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that

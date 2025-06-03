@@ -13,6 +13,11 @@ compute_metrics: True #if true, the metrics will be computed after sampling
 #metrics: ["pairwise-spectral", "pairwise-panning", "pairwise-dynamic", "pairwise-loudness", "pairwise-mss-lr", "pairwise-mss-ms", "pairwise-mldr-lr", "pairwise-mldr-ms", "pairwise-fx_encoder", "pairwise-AFxRep"]
 
 metrics:
+  - "histogram-features"
+  - "fad-fx_encoder"
+  - "fad-AFxRep"
+  - "fad-AFxRep-mid"
+  - "fad-AFxRep-side"
   - "pairwise-spectral"
   - "pairwise-panning"
   - "pairwise-dynamic"
@@ -23,10 +28,12 @@ metrics:
   - "pairwise-mldr-ms"
   - "pairwise-fx_encoder"
   - "pairwise-AFxRep"
+  - "pairwise-AFxRep-mid"
+  - "pairwise-AFxRep-side"
 
 checkpoint: None
 
-batch_size: 20 #batch size for sampling, should be 1 for conditional sampling
+batch_size: 10 #batch size for sampling, should be 1 for conditional sampling
 
 sampling_params:
   same_as_training: False #if true, the sampling parameters will be the same as the ones used for training (sigma_data, sigma_min, sigma_max and rho)
@@ -60,12 +67,19 @@ AFxRep_args:
   ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/tmp/afx-rep.ckpt"
 
 
+FAD_args:
+  do_PCA_figure: True #if True, the FAD figure will be computed
+
+histogram_features_args:
+  report_all_pairwise_metrics: True #if True, all pairwise metrics will be reported in the histogram features figure
+
+
 #logging configuration
 wandb:
   use: True
   entity: "eloimoliner"
-  project: "project_test"
-  num_examples_to_log: 8
+  project: "project_test_03_06_2"
+  num_examples_to_log: 4
   log_every: 10
   run_name: "test-conditional-dry-vocals-diffSTFT"
   tags: Null

@@ -1,10 +1,11 @@
 
 defaults:
-  - dset: tencymastering_vocals_fxnorm_server5
+  - dset: tencymastering_vocals_fxnorm_randomfx_server5
   - network: Latent_DiT_M2L4
-  - diff_params: edm_LDM_M2L4_noisycontext
-  - tester: evaluate_conditional_dry_vocals
+  - diff_params: edm_LDM_M2L4_randomfx
+  - tester: evaluate_conditional_dry_vocals_LDM_M2L4
   - logging: base_logging
+  - fx_model: diffvox
 
 model_dir: "/data4/eloi/experiments/1A_tencymastering_vocals_M2L4"
 
@@ -67,7 +68,7 @@ exp:
 
 
   augmentations:
-    list: ["polarity","stereo_shift"]
+    list: ["polarity"]
     polarity:
       prob: 0.5
 

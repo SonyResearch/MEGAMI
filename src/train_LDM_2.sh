@@ -15,8 +15,8 @@ source ~/myenv/bin/activate
 #conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_noisy.yaml
 #n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_noisy_0dB"
 
-conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_dr.yaml
-n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_dr"
+conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_dr_noisy0dB.yaml
+n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_dr_noisy_0dB"
 
 #conf=conf_1A_tencymastering_vocals_LDM_M2L4.yaml
 #n="1A_tencymastering_vocals_LDM_M2L4_preprocessed"
@@ -34,10 +34,10 @@ mkdir -p $PATH_EXPERIMENT
 
 # Number of GPUs to use
 #export CUDA_VISIBLE_DEVICES=2,3
-export CUDA_VISIBLE_DEVICES=2,3
+export CUDA_VISIBLE_DEVICES=0,1
 NUM_GPUS=2
-#MASTER_PORT=29501
-MASTER_PORT=29500
+MASTER_PORT=29501
+#MASTER_PORT=29500
 
 # Launch the training script with torchrun for DDP
 torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT train_ddp.py --config-name=$conf  \

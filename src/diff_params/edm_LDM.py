@@ -1,4 +1,5 @@
 import torch
+import hydra
 import einops
 import numpy as np
 
@@ -22,6 +23,7 @@ class EDM_LDM(SDE):
         cfg_dropout_prob,
         default_shape,
         context_preproc=None,
+        effect_randomizer=None
         ):
 
         super().__init__(type, sde_hp)
@@ -34,6 +36,12 @@ class EDM_LDM(SDE):
         self.default_shape = torch.Size(default_shape)
 
         self.context_preproc = context_preproc
+
+        if effect_randomizer is None:
+            self.effect_randomizer = None
+        else:
+            self.effect_randomizer = effect_randomizer
+
 
         try:
             self.max_t= self.sde_hp.max_sigma
@@ -243,6 +251,9 @@ class EDM_LDM(SDE):
 
         return cin * x_perturbed, target, cnoise
 
+    def get_null_embed(self, context):
+        null_embed = torch.zeros_like(context, device=context.device)
+        return null_embed
 
     def loss_fn(self, net, sample=None, context=None, *args, **kwargs):
         """
@@ -260,7 +271,7 @@ class EDM_LDM(SDE):
 
         with torch.no_grad():
             y=self.transform_forward(y, compile=True)
-            print("y", y.std())
+            #print("y", y.std())
 
             if context is not None:
 
@@ -269,17 +280,11 @@ class EDM_LDM(SDE):
 
                 if self.cfg_dropout_prob > 0.0:
                     #context=self.transform_forward(context)
-                    null_embed = torch.zeros_like(context, device=context.device)
+                    null_embed = self.get_null_embed(context)
                     #dropout context with probability cfg_dropout_prob
                     mask = torch.rand(context.shape[0], device=context.device) < self.cfg_dropout_prob
                     context = torch.where(mask.view(-1,1,1), null_embed, context)
     
-
-        #print("y shape", y.shape, "y stdev", y.std(), "context shape", context.shape, "t shape", t.shape)
-        #x=self.transform_forward(context)
-        #x=self.flatten(x)
-
-        #print("y shape", y.shape, "t shape", t.shape, "context shape", context.shape)
 
 
         input, target, cnoise = self.prepare_train_preconditioning(y, t )
@@ -329,9 +334,24 @@ class EDM_LDM(SDE):
         #print(xn.shape, cskip.shape, cout.shape, cin.shape, cnoise.shape)
         x_in=cin*xn
 
+        if cfg_scale==1.0:
+            #x_in=self.unflatten(x_in)
+            net_out=net(x_in, cnoise.to(torch.float32), input_concat_cond=cond)  #this will crash because of broadcasting problems, debug later!
+        else:
+            null_embed=self.get_null_embed(cond)
+            inputs_cond= torch.cat([cond, null_embed], dim=0)
 
-        #x_in=self.unflatten(x_in)
-        net_out=net(x_in, cnoise.to(torch.float32), input_concat_cond=cond, cfg_scale=cfg_scale)  #this will crash because of broadcasting problems, debug later!
+            x_in_cat=torch.cat([x_in, x_in], dim=0)
+
+            cnoise=torch.cat([cnoise, cnoise], dim=0)
+        
+            net_out_batch=net(x_in_cat, cnoise.to(torch.float32), input_concat_cond=inputs_cond)
+
+            cond_output, uncond_output = torch.chunk(net_out_batch, 2, dim=0)
+
+            net_out = uncond_output + (cond_output - uncond_output) * cfg_scale
+
+
         #net_out=self.flatten(net_out).to(xn.dtype)
 
         x_hat=cskip*xn + cout*net_out   
@@ -341,17 +361,23 @@ class EDM_LDM(SDE):
         return x_hat
 
 
-        
-    def transform_forward(self, x, compile=False, is_condition=False, is_test=False):
-        #TODO: Apply forward transform here
-        #fake stereo
+    def preprocessor(self, x, is_test=False):
+            if self.effect_randomizer is not None:
+                #apply random effect to the model parameters
+                if is_test:
+                    with torch.no_grad():
+                        x=self.effect_randomizer.apply_random_effect(x, std_range=2.0 if not is_test else 0.0)
 
-        if is_condition:
             if self.context_preproc is not None:
+                    #if self.context_preproc.to_mono:
+                    #    x = x.mean(dim=1, keepdim=True)  #convert to mono if needed
+
+                        #now we might be adding mono noise
+                
                     if self.context_preproc.add_noise:
                         if self.context_preproc.noise_type=="pink":
                             #add pink noise to context
-                            print("Adding pink noise to context")
+                            #print("Adding pink noise to context")
                             SNR_mean= self.context_preproc.SNR_mean
                             SNR_std= self.context_preproc.SNR_std   
                             if is_test:
@@ -360,6 +386,19 @@ class EDM_LDM(SDE):
                             x= utils.add_pink_noise(x, SNR)
                         else:
                             raise NotImplementedError("Only pink noise is implemented for now")
+
+                    #if self.context_preproc.to_mono:
+                    #    #add fake stereo by duplicating the mono signal
+                    #    x= torch.cat([x, x], dim=1)
+
+            return x
+        
+    def transform_forward(self, x, compile=False, is_condition=False, is_test=False):
+        #TODO: Apply forward transform here
+        #fake stereo
+
+        if is_condition:
+            x=self.preprocessor(x, is_test=is_test)
 
         if compile:
             z=self.AE_encode_compiled(x)

@@ -820,3 +820,146 @@ def lineplot(x=None, dict=None, xaxis="linear", yaxis="log"):
 
 
     return fig
+
+def make_PCA_figure(data_dict, num_bins=20):
+
+    fig = plt.figure(figsize=(6, 5), dpi=200)
+    gs = fig.add_gridspec(
+        2,
+        2,
+        width_ratios=(4, 1),
+        height_ratios=(1, 4),
+        left=0.1,
+        right=0.9,
+        bottom=0.1,
+        top=0.9,
+    )
+
+    # Create the Axes.
+    ax = fig.add_subplot(gs[1, 0])
+    ax_histx = fig.add_subplot(gs[0, 0], sharex=ax)
+    ax_histy = fig.add_subplot(gs[1, 1], sharey=ax)
+    # Draw the scatter plot and marginals.
+    # no labels
+    ax_histx.tick_params(axis="x", labelbottom=False)
+    ax_histy.tick_params(axis="y", labelleft=False)
+
+    xymax=0
+    xymin=999999
+    markers= ["o", "x", "D", "^", "v", "x", "p", "*", "h", "+", "s"]
+    colors=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
+
+    for i,(k, v) in enumerate(data_dict.items()):
+
+        # the scatter plot:
+        ax.scatter(
+            v[:, 0],
+            v[:, 1],
+            marker=markers[i % len(markers)],
+            c=colors[i % len(colors)],
+            linewidths=0.8,
+            s=24,
+            label=k,
+            alpha=0.7,
+        )
+
+        xymax=max(xymax, np.max(v[:, :2]))
+        xymin=min(xymin, np.min(v[:, :2]))
+
+    ax.legend(loc="upper left")
+    ax.set_xlabel("PC 1")
+    ax.set_ylabel("PC 2")
+
+    # now determine nice limits by hand:
+    data_range = xymax - xymin
+    binwidth = data_range / num_bins  # Calculate bin width based on the range and number of bins
+
+    lim = (int(xymax / binwidth) + 1) * binwidth
+    bins = np.arange(-lim, lim + binwidth, binwidth)
+
+    style = { "edgecolor": "black", "linewidth": 0.8, "alpha": 0.5 }
+
+
+
+    #linestyles=[":", "-", "--", "-.", ":", "-"]
+    facecolors=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
+    hatches = ['/', '\\', '.', '+', '*', 'o', 'O', '.', '-', '|', 'x']
+
+    for i, (k, v) in enumerate(data_dict.items()):
+
+        hist_style = style.copy()
+        hist_style["hatch"] = hatches[i % len(hatches)]
+
+        ax_histx.hist(v[:, 0], bins=bins, density=False,  label=k, facecolor=facecolors[i], **hist_style)
+
+        ax_histy.hist(
+            v[:, 1],
+            bins=bins,
+            orientation="horizontal",
+            density=False,
+            facecolor=facecolors[i],
+            **hist_style
+        )
+
+    ax_histx.set_ylabel("Count")
+    ax_histy.set_xlabel("Count")
+
+    ax_histx.legend(loc="upper right")
+
+
+    return fig
+
+def make_histogram_figure(data_dict, num_bins=20):
+
+    fig = plt.figure(figsize=(5, 3), dpi=100)
+
+    # Create the Axes.
+    #ax = fig.add_subplot(gs[1, 0])
+    #ax_histx = fig.add_subplot(gs[0, 0], sharex=ax)
+    #ax_histy = fig.add_subplot(gs[1, 1], sharey=ax)
+    # Draw the scatter plot and marginals.
+    # no labels
+
+    #get ax from the figure
+    ax = fig.add_subplot(111)
+
+    ax.tick_params(axis="x", labelbottom=True)
+
+
+    xymax=0
+    xymin=999999
+
+    for i,(k, v) in enumerate(data_dict.items()):
+
+        xymax=max(xymax, np.max(v))
+        xymin=min(xymin, np.min(v))
+
+
+    data_range = xymax - xymin  
+    binwidth = data_range / num_bins  # Calculate bin width based on the range and number of bins
+
+    lim_up = (int(xymax / binwidth) + 1) * binwidth+binwidth
+    lim_down= (int(xymin / binwidth) - 1) * binwidth-binwidth
+
+    bins = np.arange(lim_down, lim_up, binwidth)
+
+    style = { "edgecolor": "black", "linewidth": 0.8, "alpha": 0.5 }
+
+    #linestyles=[":", "-", "--", "-.", ":", "-"]
+    facecolors=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
+    hatches = ['/', '\\', '.', '+', '*', 'o', 'O', '.', '-', '|', 'x']
+
+    for i, (k, v) in enumerate(data_dict.items()):
+
+        hist_style = style.copy()
+        hist_style["hatch"] = hatches[i % len(hatches)]
+
+        ax.hist(v[:], bins=bins, density=False,  label=k, facecolor=facecolors[i], **hist_style)
+
+    ax.set_ylabel("Count")
+
+    ax.legend(loc="upper right")
+
+
+    return fig
+
