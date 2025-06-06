@@ -6,6 +6,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data.distributed import DistributedSampler
 from omegaconf import DictConfig
+import datetime
 
 def worker_init_fn(worker_id, rank=0):
     st = np.random.get_state()[2]
@@ -39,7 +40,7 @@ def _main(rank, world_size, args):
     val_set_dict = {}
     if rank == 0:
         val_set = hydra.utils.instantiate(args.dset.validation)
-        val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=1, num_workers=args.exp.num_workers,
+        val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=args.exp.val_batch_size, num_workers=args.exp.num_workers,
                                              pin_memory=True, worker_init_fn=lambda x: worker_init_fn(x, rank=rank))
         val_set_dict[args.dset.validation.mode] = val_loader
     else:
@@ -50,7 +51,7 @@ def _main(rank, world_size, args):
     try:
         if rank == 0:
             val_set = hydra.utils.instantiate(args.dset.validation_2)
-            val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=1, num_workers=args.exp.num_workers,
+            val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=args.exp.val_batch_size, num_workers=args.exp.num_workers,
                                                  pin_memory=True, worker_init_fn=lambda x: worker_init_fn(x, rank=rank))
             val_set_dict[args.dset.validation_2.mode] = val_loader
     except:
@@ -107,6 +108,7 @@ def init_distributed_mode(rank, world_size):
         init_method='env://',
         world_size=world_size,
         rank=rank,
+        timeout=datetime.timedelta(seconds=3600),
     )
 
 @hydra.main(config_path="conf", config_name="conf", version_base=None)

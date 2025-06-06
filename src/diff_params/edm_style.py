@@ -10,7 +10,7 @@ import utils.training_utils as utils
 from diff_params.shared import SDE
 
 import torch.distributed as dist
-from diff_params.edm_ldm import EDM_LDM
+from diff_params.edm_LDM import EDM_LDM
 
 
 class EDM_Style(EDM_LDM):
@@ -93,9 +93,9 @@ class EDM_Style(EDM_LDM):
 
                 embed=embed.view(embed.shape[0], -1)
 
-                embed_mid, embed_side = torch.chunk(embed, 2, dim=1)
+                #embed_mid, embed_side = torch.chunk(embed, 2, dim=1)
 
-                return embed_mid, embed_side
+                return embed
 
             
             self.FXenc=fxencode_fn
@@ -126,7 +126,7 @@ class EDM_Style(EDM_LDM):
             y=self.style_encode(y, compile=True)
 
             if context is not None:
-                context=self.transform_forward(context, compile=True, is_conditioning=True)
+                context=self.transform_forward(context, compile=True, is_condition=True)
                 if self.cfg_dropout_prob > 0.0:
                     #context=self.transform_forward(context)
                     null_embed = torch.zeros_like(context, device=context.device)
@@ -212,12 +212,15 @@ class EDM_Style(EDM_LDM):
         Args:
             x (Tensor): shape: (B,T) Audio to encode
         """
+
         if compile:
             x=self.FXenc_compiled(x)
         else:
             x=self.FXenc(x)
         
-        assert x.ndim==2
+        print("x shape after FXenc", x.shape)
+
+        #assert x.ndim==2
 
         #x=x.view(x.shape[0], x.shape[1], 1)
 

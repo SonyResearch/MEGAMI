@@ -99,6 +99,15 @@ class Trainer():
                 if self.tester is not None:
                     self.tester.setup_wandb_run(self.wandb_run)
                 self.setup_logging_variables()
+
+        self.skip_val=False  # This is used to skip validation during training, useful for debugging
+
+        try:
+            if self.args.exp.skip_first_val:
+                self.skip_val = True
+        except Exception as e:
+            print(e)
+            pass
         
 
     def setup_wandb(self):
@@ -466,7 +475,11 @@ class Trainer():
                     self.save_checkpoint()
     
                 if self.it > 0 and self.it % self.args.logging.heavy_log_interval == 0 and self.args.logging.log:
-                    self.heavy_logging()
+                    if self.skip_val:
+                        print("Skipping validation")
+                        self.skip_val = False
+                    else:
+                        self.heavy_logging()
     
                 if self.it > 0 and self.it % self.args.logging.log_interval == 0 and self.args.logging.log:
                     self.easy_logging()

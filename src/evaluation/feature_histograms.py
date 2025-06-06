@@ -105,6 +105,10 @@ class HistogramFeatures:
             y_hat_values= y_hat_values.cpu().numpy()
             #y_hat_values= np.concatenate(y_hat_values, axis=0)
             #y_hat_values=torch.tensor(y_hat_values, device=self.device)
+            data_dict = {
+                "y": y_values,
+                "y_hat": y_hat_values,
+            }
 
 
             if dict_features_x is not None:
@@ -122,12 +126,9 @@ class HistogramFeatures:
                 #x_values = torch.tensor(x_values, device=self.device)
                 x_values = x_values.cpu().numpy()
 
+                data_dict["x"] = x_values   
 
-            data_dict = {
-                "y": y_values,
-                "y_hat": y_hat_values,
-                "x": x_values
-            }
+
 
             fig= make_histogram_figure(data_dict)
 
@@ -165,14 +166,14 @@ class HistogramFeatures:
 
             y= dict_y[key]
             y_hat= dict_y_hat[key]
-            x= dict_x[key]
+            #x= dict_x[key]
 
             assert y.shape == y_hat.shape, f"Shape mismatch for key {key}: {y.shape} vs {y_hat.shape}"
 
-            if x.shape[-2]==1:
-                x=x.repeat(2,1)
+            #if x.shape[-2]==1:
+            #    x=x.repeat(2,1)
 
-            assert x.shape== y.shape, f"Shape mismatch for key {key}: {x.shape} vs {y.shape}"
+            #assert x.shape== y.shape, f"Shape mismatch for key {key}: {x.shape} vs {y.shape}"
 
             c, d=y.shape
 
@@ -181,7 +182,7 @@ class HistogramFeatures:
 
 
 
-            feat_x=self.feat_extractor(x)
+            #feat_x=self.feat_extractor(x)
             feat_y= self.feat_extractor(y)
             feat_y_hat= self.feat_extractor(y_hat)
 
@@ -189,10 +190,11 @@ class HistogramFeatures:
 
             dict_features_y[key] = feat_y
             dict_features_y_hat[key] = feat_y_hat
-            dict_features_x[key] = feat_x
+            #dict_features_x[key] = feat_x
 
 
-        figs_dict=self.do_histogram_figure(dict_features_y, dict_features_y_hat, dict_features_x)
+        figs_dict=self.do_histogram_figure(dict_features_y, dict_features_y_hat )
+
 
 
         #modify the keys of figs_dict to include the type

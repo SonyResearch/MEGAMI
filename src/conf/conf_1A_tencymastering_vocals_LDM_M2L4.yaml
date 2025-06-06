@@ -3,7 +3,7 @@ defaults:
   - dset: tencymastering_vocals_preprocessed_server5
   - network: Latent_DiT_M2L4
   - diff_params: edm_LDM_M2L4
-  - tester: evaluate_conditional_dry_vocals
+  - tester: evaluate_conditional_dry_vocals_LDM_M2L4
   - logging: base_logging
 
 model_dir: "/data4/eloi/experiments/1A_tencymastering_vocals_M2L4"
@@ -39,6 +39,8 @@ exp:
   scheduler_gamma: 0.8
 
   batch_size: 8
+
+  val_batch_size: 20
 
   # Performance-related.
   num_workers: 4  

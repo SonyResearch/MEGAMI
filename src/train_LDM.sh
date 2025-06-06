@@ -34,8 +34,8 @@ mkdir -p $PATH_EXPERIMENT
 
 # Number of GPUs to use
 #export CUDA_VISIBLE_DEVICES=2,3
-export CUDA_VISIBLE_DEVICES=2,3
-NUM_GPUS=2
+export CUDA_VISIBLE_DEVICES=0
+NUM_GPUS=1
 #MASTER_PORT=29501
 MASTER_PORT=29500
 
@@ -43,8 +43,8 @@ MASTER_PORT=29500
 torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT train_ddp.py --config-name=$conf  \
 		model_dir=$PATH_EXPERIMENT \
 		exp.optimizer.lr=1e-4 \
-		exp.resume=False \
-		exp.batch_size=8 \
+		exp.resume=True \
+		exp.batch_size=16 \
 	  	exp.compile=True \
 	  	logging=base_logging \
 

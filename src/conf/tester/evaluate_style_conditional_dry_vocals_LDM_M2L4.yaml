@@ -6,33 +6,19 @@ tester:
 sampler:
   _target_: 'inference.sampler_euler_heun.SamplerEulerHeun'
 
-modes: ["conditional_dry_vocals"] #modes to test
+modes: ["style_conditional_dry_vocals"] #modes to test
 
 
 compute_metrics: True #if true, the metrics will be computed after sampling
 #metrics: ["pairwise-spectral", "pairwise-panning", "pairwise-dynamic", "pairwise-loudness", "pairwise-mss-lr", "pairwise-mss-ms", "pairwise-mldr-lr", "pairwise-mldr-ms", "pairwise-fx_encoder", "pairwise-AFxRep"]
 
-#metrics:
-#  - "histogram-features"
-#  - "fad-fx_encoder"
-#  - "fad-AFxRep"
-#  - "fad-AFxRep-mid"
-#  - "fad-AFxRep-side"
-#  - "pairwise-spectral"
-#  - "pairwise-panning"
-#  - "pairwise-dynamic"
-#  - "pairwise-loudness"
-#  - "pairwise-mss-lr"
-#  - "pairwise-mss-ms"
-#  - "pairwise-mldr-lr"
-#  - "pairwise-mldr-ms"
-#  - "pairwise-fx_encoder"
-#  - "pairwise-AFxRep"
-#  - "pairwise-AFxRep-mid"
-#  - "pairwise-AFxRep-side"
-#
 metrics:
-  - "fad-fx_encoder"
+  - "fad-AFxRep"
+  - "fad-AFxRep-mid"
+  - "fad-AFxRep-side"
+  - "pairwise-style-AFxRep"
+  - "pairwise-style-AFxRep-mid"
+  - "pairwise-style-AFxRep-side"
 
 checkpoint: None
 
@@ -41,16 +27,16 @@ batch_size: 10 #batch size for sampling, should be 1 for conditional sampling
 sampling_params:
   same_as_training: False #if true, the sampling parameters will be the same as the ones used for training (sigma_data, sigma_min, sigma_max and rho)
   sde_hp:
-    sigma_data: 0.5 #default for maestro
-    sigma_min: 1e-2
-    sigma_max: 100 #this is sigma_start
-    rho: 8
-  Schurn: 10
+    sigma_data: 0.044 #default for maestro
+    sigma_min: 1e-5
+    sigma_max: 10 #this is sigma_start
+    rho: 10
+  Schurn: 0
   Snoise: 1
   Stmin: 0
   Stmax: 10
   order: 1 #order of the sampler (1 or 2)
-  T: 101 #number of discretization steprs
+  T: 51 #number of discretization steprs
   schedule: "edm" #"log": log schedule using the parameters in sampling_params
 
 cfg_scale: 1.0
@@ -61,28 +47,24 @@ unconditional:
   num_samples: 1
   audio_len: 525312
 
-fx_encoder_args:
-  distance_type: "cosine" #distance metric to use for the fx encoder
-  ckpt_path: "utils/feature_extractors/ckpt/fxenc_default.pt"
+shape: [1, 64, 16] #shape of the data to be generated
+
   
 AFxRep_args:
   distance_type: "cosine" #distance metric to use for the AFxRep
   ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/tmp/afx-rep.ckpt"
 
-
 FAD_args:
   do_PCA_figure: True #if True, the FAD figure will be computed
 
-histogram_features_args:
-  report_all_pairwise_metrics: True #if True, all pairwise metrics will be reported in the histogram features figure
 
 
 #logging configuration
 wandb:
   use: True
   entity: "eloimoliner"
-  project: "project_test_04_06"
+  project: "project_test_style_03_06"
   num_examples_to_log: 4
   log_every: 10
-  run_name: "test-conditional-dry-vocals-diffSTFT"
+  run_name: "test-style-conditional-dry-vocals-diffSTFT"
   tags: Null

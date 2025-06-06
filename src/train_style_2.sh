@@ -3,15 +3,15 @@
 # time setup
 
 
-export HYDRA_FULL_ERROR=1 
+export HYDRA_FULL_ERROR=3
 
 source ~/myenv/bin/activate
 
 # main config
-conf=conf_1C_tencymastering_vocals_style.yaml
+conf=conf_1C_tencymastering_vocals_style_fxnorm_dr_noisy0dB.yaml
 
 
-n="1C_tencymastering_vocals_style_0306"
+n="1C_tencymastering_vocals_style_fxnorm_dr_noisy0dB_0306"
 
 PATH_EXPERIMENT=/data5/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
@@ -22,7 +22,7 @@ mkdir -p $PATH_EXPERIMENT
 
 
 # Number of GPUs to use
-export CUDA_VISIBLE_DEVICES=2
+export CUDA_VISIBLE_DEVICES=3
 NUM_GPUS=1
 #MASTER_PORT=29500
 MASTER_PORT=29501

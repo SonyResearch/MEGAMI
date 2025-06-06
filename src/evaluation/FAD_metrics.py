@@ -157,90 +157,85 @@ class FADFeatures(FADMetric):
         print("all_features shape:", all_features.shape)
 
         #mean
-        mean_features = all_features.mean(dim=0)
+        #mean_features = all_features.mean(dim=0)
 
         #cov
-        cov_features = torch.cov(all_features.T)
+        #cov_features = torch.cov(all_features.T)
+        mean_features = np.mean(all_features.cpu().numpy(), axis=0)
+
+        cov_features= np.cov(all_features.cpu().numpy(), rowvar=False)
 
 
-        return mean_features, cov_features
+
+        return torch.tensor(mean_features), torch.tensor(cov_features)
+
+    def calculate_FAD_distance(self, mu1, sigma1, mu2, sigma2, eps=1e-6):
+
+        """Numpy implementation of the Frechet Distance.
+        The Frechet distance between two multivariate Gaussians X_1 ~ N(mu_1, C_1)
+        and X_2 ~ N(mu_2, C_2) is
+                d^2 = ||mu_1 - mu_2||^2 + Tr(C_1 + C_2 - 2*sqrt(C_1*C_2)).
     
-    def calculate_FAD_distance(self, mean_y, cov_y, mean_y_hat, cov_y_hat, eps=1e-6, do_check=False):
-        """
-        Calculate the FAD distance between two sets of features.
-
-        #adapted from https://github.com/mseitzer/pytorch-fid/blob/master/src/pytorch_fid/fid_score.py
-        # and https://github.com/microsoft/fadtk/blob/main/fadtk/fad.py
-        
-        Args:
-            mean_y (torch.Tensor): Mean of the first set of features.
-            cov_y (torch.Tensor): Covariance of the first set of features.
-            mean_y_hat (torch.Tensor): Mean of the second set of features.
-            cov_y_hat (torch.Tensor): Covariance of the second set of features.
-            
+        Stable version by Dougal J. Sutherland.
+    
+        Params:
+        -- mu1   : Numpy array containing the activations of a layer of the
+                   inception net (like returned by the function 'get_predictions')
+                   for generated samples.
+        -- mu2   : The sample mean over activations, precalculated on an
+                   representative data set.
+        -- sigma1: The covariance matrix over activations for generated samples.
+        -- sigma2: The covariance matrix over activations, precalculated on an
+                   representative data set.
+    
         Returns:
-            float: The FAD distance.
+        --   : The Frechet Distance.
         """
-        # Compute the squared difference between means
-        mean_diff = mean_y_hat - mean_y
-        mean_distance = mean_diff.dot(mean_diff)
+        mu1=mu1.detach().cpu().numpy()
+        mu2=mu2.detach().cpu().numpy()
 
+        sigma1=sigma1.detach().cpu().numpy()
+        sigma2=sigma2.detach().cpu().numpy()
 
-        trace_cov_y_hat = torch.trace(cov_y_hat)
-        trace_cov_y= torch.trace(cov_y)
-
-
-        cov_y_hat=cov_y_hat.cpu().numpy()
-        cov_y=cov_y.cpu().numpy()
-
-
-        cov_dot_product = cov_y_hat.dot(cov_y)
-
-
-        covmean, _ = linalg.sqrtm(cov_dot_product, disp=False)
-
-
-
+    
+        mu1 = np.atleast_1d(mu1)
+        mu2 = np.atleast_1d(mu2)
+    
+        sigma1 = np.atleast_2d(sigma1)
+        sigma2 = np.atleast_2d(sigma2)
+    
+        assert (
+            mu1.shape == mu2.shape
+        ), "Training and test mean vectors have different lengths"
+        assert (
+            sigma1.shape == sigma2.shape
+        ), "Training and test covariances have different dimensions"
+    
+        diff = mu1 - mu2
+    
+        # Product might be almost singular
+        covmean, _ = linalg.sqrtm(sigma1.dot(sigma2), disp=False)
         if not np.isfinite(covmean).all():
-            #print('fid calculation produces singular product; '
-            #    'adding %s to diagonal of cov estimates') % eps
-
-            print("fid calculation produces singular product; adding eps to diagonal of cov estimates, eps:", eps)
-
-            offset = np.eye(cov_y_hat.shape[0]) * eps
-            covmean = linalg.sqrtm((cov_y_hat + offset).dot(cov_y + offset))
-
+            msg = (
+                "fid calculation produces singular product; "
+                "adding %s to diagonal of cov estimates"
+            ) % eps
+            print(msg)
+            offset = np.eye(sigma1.shape[0]) * eps
+            covmean = linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
+    
+        # Numerical error might give slight imaginary component
         if np.iscomplexobj(covmean):
             if not np.allclose(np.diagonal(covmean).imag, 0, atol=1e-3):
                 m = np.max(np.abs(covmean.imag))
                 raise ValueError("Imaginary component {}".format(m))
             covmean = covmean.real
+    
+        tr_covmean = np.trace(covmean)
+    
+        return diff.dot(diff) + np.trace(sigma1) + np.trace(sigma2) - 2 * tr_covmean
 
-        covmean_torch=torch.from_numpy(covmean).to(self.device)
-        tr_covmean=torch.trace(covmean_torch)
-
-
-        cov_distance= trace_cov_y_hat + trace_cov_y  - 2 * tr_covmean
-
-
-        # Combine both distances
-        FAD_distance = mean_distance + cov_distance
-
-
-        if do_check:
-            # eigenvalue method
-            D, V = linalg.eig(cov_dot_product)
-            covmean = (V * scisqrt(D)) @ linalg.inv(V)
-
-            tr_covmean_eigen = np.trace(covmean)
-
-            delt= np.abs(tr_covmean - tr_covmean_eigen)
-            if delt > 1e-3:
-                print("Warning: FAD distance calculation is not stable, difference between trace of covmean and eigenvalue method:", delt)
-
-
-        return FAD_distance
-
+    
 
     def do_PCA_figure(self, dict_features_y, dict_features_y_hat, dict_features_x=None):
         """
@@ -299,7 +294,7 @@ class FADFeatures(FADMetric):
 
 
 
-    def compute(self, dict_y, dict_y_hat, dict_x,   *args, **kwargs):
+    def compute(self, dict_y, dict_y_hat, dict_x, dict_p_hat=None,   *args, **kwargs):
         """
         Compute the pairwise spectral metric.
         
@@ -317,44 +312,92 @@ class FADFeatures(FADMetric):
 
         dict_features_y={}
         dict_features_y_hat={}
-        dict_features_x={}
+        #dict_features_x={}
 
+        if dict_y_hat is None:
+            print("computing FAD with style embeddings")
+            assert dict_p_hat is not None, "dict_p_hat must be provided if dict_y_hat is None"
 
-        for key in dict_y.keys():
-            y= dict_y[key]
-            y_hat= dict_y_hat[key]
-            x= dict_x[key]
+            for key in dict_y.keys():
+                y= dict_y[key]
+                #x= dict_x[key]
 
-            if x.shape[-2] == 1:
-                x = x.repeat( 2, 1)
+                embed= dict_p_hat[key]
+                embed=torch.tensor(embed).to(self.device).unsqueeze(0)
 
-            assert y.shape == y_hat.shape, f"Shape mismatch for key {key}: {y.shape} vs {y_hat.shape}"
-            assert x.shape == y.shape, f"Shape mismatch for key {key}: {x.shape} vs {y.shape}"
+                print("embed shape:", embed.shape)
+                embed_mid, embed_side = torch.chunk(embed, 2, dim=-1)
 
-            c, d=y.shape
-            #assert b==1, f"Expected batch size of 1, got {b} for key {key}"
+                if self.type== "AFxRep-mid":
+                    p_hat= embed_mid
+                elif self.type== "AFxRep-side":
+                    p_hat= embed_side
+                elif self.type== "AFxRep":
+                    p_hat= embed
+    
+                #if x.shape[-2] == 1:
+                #    x = x.repeat( 2, 1)
+    
+                #assert x.shape == y.shape, f"Shape mismatch for key {key}: {x.shape} vs {y.shape}"
+    
+                c, d=y.shape
+                #assert b==1, f"Expected batch size of 1, got {b} for key {key}"
+    
+                assert c==2, f"Expected 2 channels, got {c} for key {key}"
+    
+                y=y.T
+                #x=x.T
 
-            assert c==2, f"Expected 2 channels, got {c} for key {key}"
+                y=torch.tensor(y).permute(1,0).unsqueeze(0).to(self.device)
+                #x=torch.tensor(x).permute(1,0).unsqueeze(0).to(self.device)
 
-            y=y.T
-            y_hat=y_hat.T
-            x=x.T
+                with torch.no_grad():
+                    feat_y= self.feat_extractor(y)
+                    #feat_x= self.feat_extractor(x)
+    
+                assert p_hat.shape == feat_y.shape, f"Shape mismatch for key {key}: {p_hat.shape} vs {feat_y.shape}"
+                #assert p_hat.shape == feat_x.shape, f"Shape mismatch for key {key}: {p_hat.shape} vs {feat_x.shape}"
 
+                dict_features_y[key] = feat_y
+                #dict_features_x[key] = feat_x
+                dict_features_y_hat[key] = p_hat
 
-            #if self.type=="fx_encoder":
-            feat_y, feat_y_hat, feat_x = self.extract_features(y, y_hat, x)
-            dict_features_y[key] = feat_y
-            dict_features_y_hat[key] = feat_y_hat
-            dict_features_x[key] = feat_x
-            #elif self.type=="AFxRep":
-            #    feat_y, feat_y_hat = self.extract_features(y, y_hat)
-            #    dict_features_y[key] = feat_y
-            #    dict_features_y_hat[key] = feat_y_hat
-            #else:
-            #    raise ValueError(f"Unknown type: {self.type}")
+        else:
+            for key in dict_y.keys():
+                y= dict_y[key]
+                #x= dict_x[key]
+                y_hat= dict_y_hat[key]
+    
+                #if x.shape[-2] == 1:
+                #    x = x.repeat( 2, 1)
+    
+                assert y.shape == y_hat.shape, f"Shape mismatch for key {key}: {y.shape} vs {y_hat.shape}"
+                #assert x.shape == y.shape, f"Shape mismatch for key {key}: {x.shape} vs {y.shape}"
+    
+                c, d=y.shape
+                #assert b==1, f"Expected batch size of 1, got {b} for key {key}"
+    
+                assert c==2, f"Expected 2 channels, got {c} for key {key}"
+    
+                y=y.T
+                y_hat=y_hat.T
+                #x=x.T
+    
+                y=torch.tensor(y).permute(1,0).unsqueeze(0).to(self.device)
+                y_hat=torch.tensor(y_hat).permute(1,0).unsqueeze(0).to(self.device)
+                #x=torch.tensor(x).permute(1,0).unsqueeze(0).to(self.device)
+        
+                with torch.no_grad():
+                    feat_y= self.feat_extractor(y)
+                    feat_y_hat= self.feat_extractor(y_hat)
+                    #feat_x= self.feat_extractor(x)
+
+                dict_features_y[key] = feat_y
+                dict_features_y_hat[key] = feat_y_hat
+                #dict_features_x[key] = feat_x
             
         if self.FAD_args.do_PCA_figure:
-            fig=self.do_PCA_figure(dict_features_y, dict_features_y_hat, dict_features_x)
+            fig=self.do_PCA_figure(dict_features_y, dict_features_y_hat)
             key= self.type+ "_PCA_figure"
             dict_output = {key: fig}
 
@@ -364,7 +407,10 @@ class FADFeatures(FADMetric):
 
         y_hat_mean, y_hat_cov = self.calculate_emb_statistics(dict_features_y_hat)
 
+
+
         # Compute the distance between the mean features
+        #FAD_distance = self.calculate_FAD_distance(y_mean, y_cov, y_hat_mean, y_hat_cov)
         FAD_distance = self.calculate_FAD_distance(y_mean, y_cov, y_hat_mean, y_hat_cov)
 
 

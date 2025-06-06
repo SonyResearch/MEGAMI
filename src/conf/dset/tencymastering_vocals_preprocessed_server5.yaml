@@ -17,6 +17,8 @@ train:
     #rms_dry: -18
     #normalize_mode: Null
 
+  x_as_mono: True
+
   num_examples: -1
 
   RMS_threshold_dB: -40.0
@@ -43,6 +45,8 @@ validation:
     #normalize_mode: Null
 
   num_examples: 100
+
+  x_as_mono: True
 
   RMS_threshold_dB: -40.0
  
@@ -71,6 +75,8 @@ test:
     #normalize_mode: Null
 
   num_examples: 100
+
+  x_as_mono: True
 
   RMS_threshold_dB: -40.0
  

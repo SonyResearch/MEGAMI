@@ -170,7 +170,7 @@ class Tester():
 
         return preds
 
-    def test_style(self, mode):
+    def test_style_old(self, mode):
 
         assert len(self.test_set) != 0, "No samples found in test set"
 
@@ -219,6 +219,74 @@ class Tester():
                 metrics_dict[metric] = metric_factory(metric, self.args.exp.sample_rate, **self.args.tester)
 
         return metrics_dict
+
+    def test_conditional_style(self, mode, exp_description=""):
+
+        for k, test_set in self.test_set_dict.items():
+
+            print(f"Testing on {k} set")
+
+
+            assert len(test_set) != 0, "No samples found in test set"
+    
+            dict_y = {}
+            dict_x = {}
+            dict_p_hat = {}
+            #dict_p_target = {}
+    
+
+            i=0
+
+            if not self.in_training:
+                self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+    
+            for sample_y, sample_x  in tqdm(test_set):
+    
+                #print("sample_x", sample_x, "sample_y", sample_y)
+
+                B, C, T = sample_y.shape
+
+                sample_y = sample_y.to(self.device).float()
+                sample_x = sample_x.to(self.device).float()
+
+                if sample_y.dim()==2:
+                    sample_y = sample_y.unsqueeze(0)
+                if sample_x.dim()==2:
+                    sample_x = sample_x.unsqueeze(0)
+
+                #print("sample_y", sample_y.shape, "sample_x", sample_x.shape)
+                #with torch.no_grad():
+                #    p_target=self.sampler.diff_params.transform_forward(sample_y,is_condition=False, is_test=True)
+    
+                preds=self.sample_conditional(mode, sample_x, B=B)
+
+                for b in range(B):
+
+                    dict_y[i] = sample_y[b].detach().cpu().numpy()
+                    dict_x[i] = sample_x[b].detach().cpu().numpy()
+                    dict_p_hat[i] = preds[b].detach().cpu().numpy()
+                    #dict_p_target[i] = p_target[b].detach().cpu().numpy()
+
+                    i += 1
+            
+            if self.args.tester.compute_metrics:
+                for metric in self.metrics_dict.keys():
+                    print(f"Computing metric {metric}")
+                    result, result_dict=self.metrics_dict[metric].compute(dict_y, None, dict_x, dict_p_hat=dict_p_hat)
+    
+                    if self.use_wandb:
+                        if result is not None:
+                            self.log_metric(result, metric+"_"+k, step=self.it )
+
+                        for key, value in result_dict.items():
+                            if "figure" in key:
+                                # log figure as an image
+                                self.log_figure(value, key+"_"+k, step=self.it)
+                            else:
+                                self.log_metric(value, key+"_"+k, step=self.it)
+
+                    if not self.in_training:
+                        self.it+= 1  # Increment iteration for testing, so we can log it in wandb
             
     def test_conditional(self, mode, exp_description=""):
 
@@ -254,9 +322,17 @@ class Tester():
                     sample_y = sample_y.unsqueeze(0)
                 if sample_x.dim()==2:
                     sample_x = sample_x.unsqueeze(0)
-                #print("sample_y", sample_y.shape, "sample_x", sample_x.shape)
     
-                preds=self.sample_conditional(mode, sample_x, B=B)
+                if "baseline" in mode:
+                    if mode== "baseline_dry":
+                        preds=sample_x  # Just return the dry vocals as baseline
+                    elif mode== "baseline_autoencoder":
+                        preds=self.autoencoder_reconstruction(sample_y)  # Just return the dry vocals as baseline
+                    elif mode== "baseline_random":
+                        raise NotImplementedError("Baseline random sampling not implemented yet")
+                        pass
+                else:
+                    preds=self.sample_conditional(mode, sample_x, B=B)
 
                 for b in range(B):
 
@@ -302,6 +378,7 @@ class Tester():
         audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
         #shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
         shape=self.sampler.diff_params.default_shape
+        shape= [B, *shape[1:]]  # B is the batch size, we want to sample B samples
 
         cond=self.sampler.diff_params.transform_forward(cond)
         
@@ -309,10 +386,32 @@ class Tester():
 
         return preds
 
+    def autoencoder_reconstruction(self,x):
+
+
+        cond_shape = x.shape
+
+        with torch.no_grad():
+            x=self.sampler.diff_params.transform_forward(x,is_condition=True, is_test=True)
+            preds=self.sampler.diff_params.transform_inverse(x)
+
+        if preds.shape[-1] != cond_shape[-1]:
+            # If the shape of the predictions is not the same as the shape of the condition, we need to pad or truncate
+            if preds.shape[-1] < cond_shape[-1]:
+                # Pad the predictions
+                preds = torch.nn.functional.pad(preds, (0, cond_shape[-1] - preds.shape[-1]))
+            elif preds.shape[-1] > cond_shape[-1]:
+                # Truncate the predictions
+                preds = preds[..., :cond_shape[-1]]
+
+        return preds
+
     def sample_conditional(self, mode, cond, B=1):
         # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
         audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
         #shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
+        cond_shape= cond.shape
+
         shape=self.sampler.diff_params.default_shape
         shape= [B, *shape[1:]]  # B is the batch size, we want to sample B samples
 
@@ -320,6 +419,15 @@ class Tester():
             cond=self.sampler.diff_params.transform_forward(cond,is_condition=True, is_test=True)
         
         preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device)
+
+        if preds.shape[-1] != cond_shape[-1]:
+            # If the shape of the predictions is not the same as the shape of the condition, we need to pad or truncate
+            if preds.shape[-1] < cond_shape[-1]:
+                # Pad the predictions
+                preds = torch.nn.functional.pad(preds, (0, cond_shape[-1] - preds.shape[-1]))
+            elif preds.shape[-1] > cond_shape[-1]:
+                # Truncate the predictions
+                preds = preds[..., :cond_shape[-1]]
 
         return preds
 
@@ -378,11 +486,23 @@ class Tester():
                     self.prepare_directories(m, unconditional=False)
                     self.save_experiment_args(m)
                 self.test_conditional(m)
+            elif m== "baseline_dry":
+                print("testing baseline dry vocals")
+                if not self.in_training:
+                    self.prepare_directories(m, unconditional=False)
+                    self.save_experiment_args(m)
+                self.test_conditional(m)
+            elif m== "baseline_autoencoder":
+                print("testing autoencoer dry vocals")
+                if not self.in_training:
+                    self.prepare_directories(m, unconditional=False)
+                    self.save_experiment_args(m)
+                self.test_conditional(m)
             elif m== "style_conditional_dry_vocals":
                 print("testing unconditional")
                 if not self.in_training:
                     self.prepare_directories(m, unconditional=False)
                     self.save_experiment_args(m)
-                self.test_style(m)
+                self.test_conditional_style(m)
             else:
                 print("Warning: unknown mode: ", m)

@@ -31,13 +31,13 @@ def _main(args):
 
     val_set_dict = {}
     val_set = hydra.utils.instantiate(args.dset.validation)
-    val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=1, num_workers=args.exp.num_workers,
+    val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=args.exp.val_batch_size, num_workers=args.exp.num_workers,
                                                   pin_memory=True, worker_init_fn=worker_init_fn)
     val_set_dict[args.dset.validation.mode] = val_loader
 
     try:
         val_set_2 = hydra.utils.instantiate(args.dset.validation_2)
-        val_loader_2 = torch.utils.data.DataLoader(dataset=val_set_2, batch_size=1, num_workers=args.exp.num_workers,
+        val_loader_2 = torch.utils.data.DataLoader(dataset=val_set_2, batch_size=args.exp.val_batch_size, num_workers=args.exp.num_workers,
                                                   pin_memory=True, worker_init_fn=worker_init_fn)
         val_set_dict[args.dset.validation_2.mode] = val_loader_2
     except:

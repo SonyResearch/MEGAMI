@@ -19,19 +19,6 @@ def _main(args):
     if not os.path.exists(args.model_dir):
             raise Exception(f"Model directory {args.model_dir} does not exist")
 
-    #################
-    ## diff params ##
-    #################
-
-    diff_params=hydra.utils.instantiate(args.diff_params)
-
-    #############
-    ## Network ##
-    #############
-
-    # it prints some logs.
-    network=hydra.utils.instantiate(args.network)
-    network=network.to(device)
 
     ##############
     ## test set ##
@@ -57,6 +44,20 @@ def _main(args):
         print("Second validation set not found, using only first one")
         pass
     
+
+    #################
+    ## diff params ##
+    #################
+
+    diff_params=hydra.utils.instantiate(args.diff_params)
+
+    #############
+    ## Network ##
+    #############
+
+    # it prints some logs.
+    network=hydra.utils.instantiate(args.network)
+    network=network.to(device)
 
 
     #############

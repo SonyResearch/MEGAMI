@@ -1,6 +1,6 @@
 
 defaults:
-  - dset: tencymastering_vocals_fxnorm_server5
+  - dset: tencymastering_vocals_fxnorm_dr_server5
   - network: Latent_DiT_M2L4
   - diff_params: edm_LDM_M2L4
   - tester: evaluate_conditional_dry_vocals_LDM_M2L4 
@@ -38,6 +38,7 @@ exp:
   scheduler_gamma: 0.8
 
   batch_size: 8
+  val_batch_size: 20
 
   # Performance-related.
   num_workers: 4  
