@@ -21,6 +21,7 @@ train:
 
   RMS_threshold_dB: -40.0
  
+  x_as_mono: True
   #random seed
   seed: 42
 
@@ -43,6 +44,8 @@ validation:
     #normalize_mode: Null
 
   num_examples: 100
+
+  x_as_mono: True
 
   RMS_threshold_dB: -40.0
  
@@ -69,6 +72,8 @@ validation_2:
 
   num_examples: 100
 
+  x_as_mono: True
+
   RMS_threshold_dB: -40.0
  
   #random seed
@@ -94,6 +99,8 @@ test:
     #normalize_mode: Null
 
   num_examples: 100
+
+  x_as_mono: True
 
   RMS_threshold_dB: -40.0
  

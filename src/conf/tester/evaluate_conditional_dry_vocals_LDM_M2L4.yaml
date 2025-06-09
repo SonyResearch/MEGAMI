@@ -12,27 +12,26 @@ modes: ["conditional_dry_vocals"] #modes to test
 compute_metrics: True #if true, the metrics will be computed after sampling
 #metrics: ["pairwise-spectral", "pairwise-panning", "pairwise-dynamic", "pairwise-loudness", "pairwise-mss-lr", "pairwise-mss-ms", "pairwise-mldr-lr", "pairwise-mldr-ms", "pairwise-fx_encoder", "pairwise-AFxRep"]
 
-#metrics:
-#  - "histogram-features"
-#  - "fad-fx_encoder"
-#  - "fad-AFxRep"
-#  - "fad-AFxRep-mid"
-#  - "fad-AFxRep-side"
-#  - "pairwise-spectral"
-#  - "pairwise-panning"
-#  - "pairwise-dynamic"
-#  - "pairwise-loudness"
-#  - "pairwise-mss-lr"
-#  - "pairwise-mss-ms"
-#  - "pairwise-mldr-lr"
-#  - "pairwise-mldr-ms"
-#  - "pairwise-fx_encoder"
-#  - "pairwise-AFxRep"
-#  - "pairwise-AFxRep-mid"
-#  - "pairwise-AFxRep-side"
-#
 metrics:
+  - "histogram-features"
   - "fad-fx_encoder"
+  - "fad-AFxRep"
+  - "fad-AFxRep-mid"
+  - "fad-AFxRep-side"
+  - "pairwise-spectral"
+  - "pairwise-panning"
+  - "pairwise-dynamic"
+  - "pairwise-loudness"
+  - "pairwise-mss-lr"
+  - "pairwise-mss-ms"
+  - "pairwise-mldr-lr"
+  - "pairwise-mldr-ms"
+  - "pairwise-fx_encoder"
+  - "pairwise-AFxRep"
+  - "pairwise-AFxRep-mid"
+  - "pairwise-AFxRep-side"
+
+#
 
 checkpoint: None
 
@@ -72,6 +71,11 @@ AFxRep_args:
 
 FAD_args:
   do_PCA_figure: True #if True, the FAD figure will be computed
+
+KAD_args: 
+  do_PCA_figure: False #if True, the FAD figure will be computed
+  kernel: "gaussian" #kernel to use for the KAD metric
+
 
 histogram_features_args:
   report_all_pairwise_metrics: True #if True, all pairwise metrics will be reported in the histogram features figure

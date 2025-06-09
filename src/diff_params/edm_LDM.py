@@ -23,7 +23,13 @@ class EDM_LDM(SDE):
         cfg_dropout_prob,
         default_shape,
         context_preproc=None,
-        effect_randomizer=None
+        effect_randomizer=None,
+        effect_randomizer_test=None,
+        effect_randomizer_comp=None,
+        effect_randomizer_comp_test=None,
+        randomize_RMS=False,
+        RMS_mean=-25.0,
+        RMS_std=5.0,
         ):
 
         super().__init__(type, sde_hp)
@@ -42,6 +48,25 @@ class EDM_LDM(SDE):
         else:
             self.effect_randomizer = effect_randomizer
 
+        if effect_randomizer_test is None:
+            self.effect_randomizer_test = None
+        else:
+            self.effect_randomizer_test = effect_randomizer_test
+        
+        if effect_randomizer_comp is None:
+            self.effect_randomizer_comp = None
+        else:
+            self.effect_randomizer_comp = effect_randomizer_comp
+        
+        if effect_randomizer_comp_test is None:
+            self.effect_randomizer_comp_test = None
+        else:
+            self.effect_randomizer_comp_test = effect_randomizer_comp_test
+
+
+        self.randomize_RMS = randomize_RMS
+        self.RMS_mean = RMS_mean
+        self.RMS_std = RMS_std
 
         try:
             self.max_t= self.sde_hp.max_sigma
@@ -362,11 +387,24 @@ class EDM_LDM(SDE):
 
 
     def preprocessor(self, x, is_test=False):
+            if self.effect_randomizer_comp is not None:
+                #apply random effect to the model parameters
+                if is_test:
+                    with torch.no_grad():
+                        #x=self.effect_randomizer.apply_random_effect(x, std_range=2.0 if not is_test else 0.0)
+                        x=self.effect_randomizer_comp_test.forward(x)
+                else:
+                    with torch.no_grad():
+                        x=self.effect_randomizer_comp.forward(x)
             if self.effect_randomizer is not None:
                 #apply random effect to the model parameters
                 if is_test:
                     with torch.no_grad():
-                        x=self.effect_randomizer.apply_random_effect(x, std_range=2.0 if not is_test else 0.0)
+                        #x=self.effect_randomizer.apply_random_effect(x, std_range=2.0 if not is_test else 0.0)
+                        x=self.effect_randomizer_test.forward(x)
+                else:
+                    with torch.no_grad():
+                        x=self.effect_randomizer.forward(x)
 
             if self.context_preproc is not None:
                     #if self.context_preproc.to_mono:
@@ -390,6 +428,22 @@ class EDM_LDM(SDE):
                     #if self.context_preproc.to_mono:
                     #    #add fake stereo by duplicating the mono signal
                     #    x= torch.cat([x, x], dim=1)
+                
+            if self.randomize_RMS:
+                    if is_test:
+                        self.RMS=torch.zeros(x.shape[0], device=x.device) + self.RMS_mean
+                    else:
+                        self.RMS=torch.randn(x.shape[0], device=x.device) * self.RMS_std + self.RMS_mean
+
+                    self.RMS=self.RMS.unsqueeze(-1).unsqueeze(-1)
+
+                    x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
+
+                    gain= self.RMS - x_RMS
+                    gain_linear = 10 ** (gain / 20)
+                    #print("gain_linear", gain_linear.shape, gain_linear.device, x.shape, x.device)
+                    x=x* gain_linear.view(-1, 1, 1)
+
 
             return x
         

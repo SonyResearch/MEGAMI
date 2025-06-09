@@ -87,7 +87,7 @@ class Trainer():
 
         self.distributed = distributed
         if distributed:
-            self.network = torch.nn.parallel.DistributedDataParallel(self.network.to(device), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True)
+            self.network = torch.nn.parallel.DistributedDataParallel(self.network.to(device), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=False)
 
         if self.args.exp.compile:
             self.network=torch.compile(self.network)

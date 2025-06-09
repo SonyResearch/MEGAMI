@@ -18,7 +18,7 @@ sde_hp:
 default_shape: [1, 64, 128]
 
 effect_randomizer:
-    _target_: utils.diffvox.effect_randomizer.DiffvoxRandomizer
+    _target_: utils.diffvox.effect_randomizer.Rever_randomizer
     strategy: "uniform_from_gaussian_range"
     fx: ${fx_model}
     npz_path: "/home/eloi/projects/project_mfm_eloi/src/utils/diffvox/presets/internal/gaussian.npz"

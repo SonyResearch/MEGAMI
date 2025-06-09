@@ -123,13 +123,14 @@ class Tester():
         )
 
     def log_audio(self, pred, name: str, it=None):
-        if it is not None:
+        if it is None:
             it = self.it 
         if self.use_wandb:
             #pred = pred.view(-1)
             #maxim = torch.max(torch.abs(pred)).detach().cpu().numpy()
             #if maxim < 1:
             #    maxim = 1
+            print("Logging audio to wandb")
             pred=pred.permute(1,0)
             self.wandb_run.log(
                 {name: wandb.Audio(pred.detach().cpu().numpy() , sample_rate=self.args.exp.sample_rate)},
@@ -212,7 +213,7 @@ class Tester():
                 from evaluation.pairwise_metrics import metric_factory
                 metrics_dict[metric]=metric_factory(metric, self.args.exp.sample_rate,  **self.args.tester)
             elif "fad" in metric:
-                from evaluation.FAD_metrics import metric_factory
+                from evaluation.dist_metrics import metric_factory
                 metrics_dict[metric]=metric_factory(metric, self.args.exp.sample_rate, **self.args.tester)
             elif "histogram" in metric:
                 from evaluation.feature_histograms import metric_factory

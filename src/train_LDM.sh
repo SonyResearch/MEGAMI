@@ -15,14 +15,20 @@ source ~/myenv/bin/activate
 #conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_noisy.yaml
 #n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_noisy_0dB"
 
-conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_dr.yaml
-n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_dr"
+#conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_noisy0dB.yaml
+#n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_noisy0dB"
 
-#conf=conf_1A_tencymastering_vocals_LDM_M2L4.yaml
-#n="1A_tencymastering_vocals_LDM_M2L4_preprocessed"
+#conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_noisy10dB_v2.yaml
+#n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_noisy10dB_v2"
 
-#conf=conf_1A_tencymastering_vocals_LDM_M2L4.yaml
-#n="1A_tencymastering_vocals_LDM_M2L4"
+conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_compression_noisy10dB.yaml
+n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_compression_noisy10dB"
+
+#conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_compression_noisy0dB.yaml
+#n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_compression_noisy0dB"
+
+#conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_noisy0dB_v2.yaml
+#n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_noisy0dB_v2"
 
 PATH_EXPERIMENT=/data5/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
@@ -34,25 +40,26 @@ mkdir -p $PATH_EXPERIMENT
 
 # Number of GPUs to use
 #export CUDA_VISIBLE_DEVICES=2,3
-export CUDA_VISIBLE_DEVICES=0
-NUM_GPUS=1
-#MASTER_PORT=29501
-MASTER_PORT=29500
+export CUDA_VISIBLE_DEVICES=0,1
+NUM_GPUS=2
+MASTER_PORT=29503
+#MASTER_PORT=29500
 
 # Launch the training script with torchrun for DDP
 torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT train_ddp.py --config-name=$conf  \
 		model_dir=$PATH_EXPERIMENT \
 		exp.optimizer.lr=1e-4 \
 		exp.resume=True \
-		exp.batch_size=16 \
+		exp.batch_size=8 \
 	  	exp.compile=True \
+		exp.skip_first_val=True \
 	  	logging=base_logging \
 
 #python train.py --config-name=$conf  \
 #	  model_dir=$PATH_EXPERIMENT \
 #	  exp.optimizer.lr=1e-4 \
 #	  exp.resume=False \
-#	  exp.batch_size=16 \
+#	  exp.batch_size=8 \
 #	  exp.compile=True \
 #	  logging=base_logging \
 

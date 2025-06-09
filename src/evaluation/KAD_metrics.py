@@ -1,0 +1,445 @@
+
+from numpy.lib.scimath import sqrt as scisqrt
+from scipy import linalg
+import numpy as np  
+import torchaudio
+import os
+from importlib import import_module
+import torch
+
+
+from evaluation.pairwise_metrics import load_AFxRep, load_fx_encoder
+
+from utils.log import make_PCA_figure
+
+
+class KADMetric:
+    """
+    Base class for pairwise metrics.
+    
+    This class should be subclassed to implement specific pairwise metrics.
+    """
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize the PairwiseMetric instance.
+        
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+        """
+        pass
+
+    def compute(self, *args, **kwargs):
+        raise NotImplementedError("Subclasses should implement this method.")
+
+
+
+class KADFeatures(KADMetric):
+    """
+    Class for computing the pairwise spectral metric.
+    
+    This class inherits from PairwiseMetric and implements the compute method
+    to calculate the pairwise spectral metric.
+    """
+    def __init__(self,
+        type=None,
+        sample_rate=44100,
+        FAD_args=None,
+                  *args, **kwargs):
+        """
+        Initialize the PairwiseSpectral instance.
+        
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+        """
+        self.type = type
+        self.sample_rate = sample_rate
+
+        self.device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+        self.FAD_args = FAD_args
+
+        assert self.FAD_args is not None, "FAD_args must be provided"
+
+        if self.FAD_args.do_PCA_figure:
+            self.pca = None
+
+        if self.type == "fx_encoder":
+            self.model_args= kwargs.get("fx_encoder_args", None)
+
+            assert self.model_args is not None, "model_args must be provided for fx_encoder type"
+
+            self.distance_type=self.model_args.distance_type
+
+            self.feat_extractor = load_fx_encoder(self.model_args, self.device)
+
+
+            #self.feat_extractor = load_effects_encoder(ckpt_path=ckpt_path).to(self.device)
+        
+        elif self.type== "AFxRep-mid" or self.type== "AFxRep-side" or self.type== "AFxRep":
+
+            self.model_args= kwargs.get("AFxRep_args", None)
+
+            assert self.model_args is not None, "model_args must be provided for AFxRep type"
+
+            self.distance_type=self.model_args.distance_type
+
+            feat_extractor = load_AFxRep(self.model_args, self.device)
+
+            if self.type == "AFxRep-mid":
+                def feat_extractor_mid(x):
+
+                    features= feat_extractor(x)
+
+                    #print("features shape:", features.shape)
+                    #divide by 2 to get mid and side features
+
+                    feat_mid, feat_side = features.chunk(2, dim=-1)
+
+                    return feat_mid
+
+                self.feat_extractor = feat_extractor_mid
+            
+            elif self.type == "AFxRep-side":
+                def feat_extractor_side(x):
+
+                    features= feat_extractor(x)
+
+                    #divide by 2 to get mid and side features
+
+                    feat_mid, feat_side = features.chunk(2, dim=-1)
+
+                    return feat_side
+
+                self.feat_extractor = feat_extractor_side
+            else:
+                self.feat_extractor = feat_extractor
+
+
+        super().__init__(*args, **kwargs)
+    
+    def extract_features(self, y, y_hat, x=None):
+
+        y=torch.tensor(y).permute(1,0).unsqueeze(0).to(self.device)
+        y_hat=torch.tensor(y_hat).permute(1,0).unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            feat_y= self.feat_extractor(y)
+            feat_y_hat= self.feat_extractor(y_hat)
+
+        if x is not None:
+            x=torch.tensor(x).permute(1,0).unsqueeze(0).to(self.device)
+            with torch.no_grad():
+                feat_x= self.feat_extractor(x)
+        else:
+            feat_x=None
+
+
+        return feat_y, feat_y_hat, feat_x
+
+
+    def calculate_emb_statistics(self, features_dicto):
+        """
+        Calculate the mean and standard deviation of the features.
+        
+        Args:
+            features_dicto (dict): Dictionary containing features for each key.
+            
+        Returns:
+            mean_features (torch.Tensor): Mean of the features.
+            std_features (torch.Tensor): Standard deviation of the features.
+        """
+
+        all_features = torch.cat(list(features_dicto.values()), dim=0)
+
+        print("all_features shape:", all_features.shape)
+
+        #mean
+        #mean_features = all_features.mean(dim=0)
+
+        #cov
+        #cov_features = torch.cov(all_features.T)
+        mean_features = np.mean(all_features.cpu().numpy(), axis=0)
+
+        cov_features= np.cov(all_features.cpu().numpy(), rowvar=False)
+
+
+
+        return torch.tensor(mean_features), torch.tensor(cov_features)
+
+    def calculate_FAD_distance(self, mu1, sigma1, mu2, sigma2, eps=1e-6):
+
+        """Numpy implementation of the Frechet Distance.
+        The Frechet distance between two multivariate Gaussians X_1 ~ N(mu_1, C_1)
+        and X_2 ~ N(mu_2, C_2) is
+                d^2 = ||mu_1 - mu_2||^2 + Tr(C_1 + C_2 - 2*sqrt(C_1*C_2)).
+    
+        Stable version by Dougal J. Sutherland.
+    
+        Params:
+        -- mu1   : Numpy array containing the activations of a layer of the
+                   inception net (like returned by the function 'get_predictions')
+                   for generated samples.
+        -- mu2   : The sample mean over activations, precalculated on an
+                   representative data set.
+        -- sigma1: The covariance matrix over activations for generated samples.
+        -- sigma2: The covariance matrix over activations, precalculated on an
+                   representative data set.
+    
+        Returns:
+        --   : The Frechet Distance.
+        """
+        mu1=mu1.detach().cpu().numpy()
+        mu2=mu2.detach().cpu().numpy()
+
+        sigma1=sigma1.detach().cpu().numpy()
+        sigma2=sigma2.detach().cpu().numpy()
+
+    
+        mu1 = np.atleast_1d(mu1)
+        mu2 = np.atleast_1d(mu2)
+    
+        sigma1 = np.atleast_2d(sigma1)
+        sigma2 = np.atleast_2d(sigma2)
+    
+        assert (
+            mu1.shape == mu2.shape
+        ), "Training and test mean vectors have different lengths"
+        assert (
+            sigma1.shape == sigma2.shape
+        ), "Training and test covariances have different dimensions"
+    
+        diff = mu1 - mu2
+    
+        # Product might be almost singular
+        covmean, _ = linalg.sqrtm(sigma1.dot(sigma2), disp=False)
+        if not np.isfinite(covmean).all():
+            msg = (
+                "fid calculation produces singular product; "
+                "adding %s to diagonal of cov estimates"
+            ) % eps
+            print(msg)
+            offset = np.eye(sigma1.shape[0]) * eps
+            covmean = linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
+    
+        # Numerical error might give slight imaginary component
+        if np.iscomplexobj(covmean):
+            if not np.allclose(np.diagonal(covmean).imag, 0, atol=1e-3):
+                m = np.max(np.abs(covmean.imag))
+                raise ValueError("Imaginary component {}".format(m))
+            covmean = covmean.real
+    
+        tr_covmean = np.trace(covmean)
+    
+        return diff.dot(diff) + np.trace(sigma1) + np.trace(sigma2) - 2 * tr_covmean
+
+    
+
+    def do_PCA_figure(self, dict_features_y, dict_features_y_hat, dict_features_x=None):
+        """
+        Perform PCA on the features and create a figure.
+        
+        Args:
+            dict_features_y (dict): Dictionary containing features for the first set.
+            dict_features_y_hat (dict): Dictionary containing features for the second set.
+            
+        Returns:
+            fig: The created figure.
+        """
+        import matplotlib.pyplot as plt
+        from sklearn.decomposition import PCA
+
+        y_values = list(dict_features_y.values())
+        y_values = torch.cat(y_values, dim=0)
+
+        print("y_values shape:", y_values.shape)
+
+
+        if self.pca is None:
+            self.pca = PCA(n_components=2)
+            pca_result = self.pca.fit_transform(y_values.cpu().numpy())
+        else:
+            pca_result = self.pca.transform(y_values.cpu().numpy())
+
+
+        y_hat_values = list(dict_features_y_hat.values())
+        y_hat_values = torch.cat(y_hat_values, dim=0)
+
+        #project y_hat values into the same PCA space
+        pca_result_hat = self.pca.transform(y_hat_values.cpu().numpy())
+
+        data_dict = {
+            "y": pca_result,
+            "y_hat": pca_result_hat
+        }
+
+        if dict_features_x is not None:
+            x_values = list(dict_features_x.values())
+            x_values = torch.cat(x_values, dim=0)
+
+            pca_result_x = self.pca.transform(x_values.cpu().numpy())
+
+            data_dict["x"] = pca_result_x
+
+
+
+        fig= make_PCA_figure(data_dict)
+
+
+        return fig
+
+
+
+
+
+    def compute(self, dict_y, dict_y_hat, dict_x, dict_p_hat=None,   *args, **kwargs):
+        """
+        Compute the pairwise spectral metric.
+        
+        Args:
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+            
+        Returns:
+            The computed pairwise spectral metric.
+        """
+
+        print("Computing FAD distance...")
+
+
+
+        dict_features_y={}
+        dict_features_y_hat={}
+        #dict_features_x={}
+
+        if dict_y_hat is None:
+            print("computing FAD with style embeddings")
+            assert dict_p_hat is not None, "dict_p_hat must be provided if dict_y_hat is None"
+
+            for key in dict_y.keys():
+                y= dict_y[key]
+                #x= dict_x[key]
+
+                embed= dict_p_hat[key]
+                embed=torch.tensor(embed).to(self.device).unsqueeze(0)
+
+                print("embed shape:", embed.shape)
+                embed_mid, embed_side = torch.chunk(embed, 2, dim=-1)
+
+                if self.type== "AFxRep-mid":
+                    p_hat= embed_mid
+                elif self.type== "AFxRep-side":
+                    p_hat= embed_side
+                elif self.type== "AFxRep":
+                    p_hat= embed
+    
+                #if x.shape[-2] == 1:
+                #    x = x.repeat( 2, 1)
+    
+                #assert x.shape == y.shape, f"Shape mismatch for key {key}: {x.shape} vs {y.shape}"
+    
+                c, d=y.shape
+                #assert b==1, f"Expected batch size of 1, got {b} for key {key}"
+    
+                assert c==2, f"Expected 2 channels, got {c} for key {key}"
+    
+                y=y.T
+                #x=x.T
+
+                y=torch.tensor(y).permute(1,0).unsqueeze(0).to(self.device)
+                #x=torch.tensor(x).permute(1,0).unsqueeze(0).to(self.device)
+
+                with torch.no_grad():
+                    feat_y= self.feat_extractor(y)
+                    #feat_x= self.feat_extractor(x)
+    
+                assert p_hat.shape == feat_y.shape, f"Shape mismatch for key {key}: {p_hat.shape} vs {feat_y.shape}"
+                #assert p_hat.shape == feat_x.shape, f"Shape mismatch for key {key}: {p_hat.shape} vs {feat_x.shape}"
+
+                dict_features_y[key] = feat_y
+                #dict_features_x[key] = feat_x
+                dict_features_y_hat[key] = p_hat
+
+        else:
+            for key in dict_y.keys():
+                y= dict_y[key]
+                #x= dict_x[key]
+                y_hat= dict_y_hat[key]
+    
+                #if x.shape[-2] == 1:
+                #    x = x.repeat( 2, 1)
+    
+                assert y.shape == y_hat.shape, f"Shape mismatch for key {key}: {y.shape} vs {y_hat.shape}"
+                #assert x.shape == y.shape, f"Shape mismatch for key {key}: {x.shape} vs {y.shape}"
+    
+                c, d=y.shape
+                #assert b==1, f"Expected batch size of 1, got {b} for key {key}"
+    
+                assert c==2, f"Expected 2 channels, got {c} for key {key}"
+    
+                y=y.T
+                y_hat=y_hat.T
+                #x=x.T
+    
+                y=torch.tensor(y).permute(1,0).unsqueeze(0).to(self.device)
+                y_hat=torch.tensor(y_hat).permute(1,0).unsqueeze(0).to(self.device)
+                #x=torch.tensor(x).permute(1,0).unsqueeze(0).to(self.device)
+        
+                with torch.no_grad():
+                    feat_y= self.feat_extractor(y)
+                    feat_y_hat= self.feat_extractor(y_hat)
+                    #feat_x= self.feat_extractor(x)
+
+                dict_features_y[key] = feat_y
+                dict_features_y_hat[key] = feat_y_hat
+                #dict_features_x[key] = feat_x
+            
+        if self.FAD_args.do_PCA_figure:
+            fig=self.do_PCA_figure(dict_features_y, dict_features_y_hat)
+            key= self.type+ "_PCA_figure"
+            dict_output = {key: fig}
+
+        # Compute mean features
+
+        y_mean, y_cov = self.calculate_emb_statistics(dict_features_y)
+
+        y_hat_mean, y_hat_cov = self.calculate_emb_statistics(dict_features_y_hat)
+
+
+
+        # Compute the distance between the mean features
+        #FAD_distance = self.calculate_FAD_distance(y_mean, y_cov, y_hat_mean, y_hat_cov)
+        FAD_distance = self.calculate_FAD_distance(y_mean, y_cov, y_hat_mean, y_hat_cov)
+
+
+        return  FAD_distance, dict_output
+
+
+def metric_factory(metric_name, sample_rate, *args, **kwargs):
+    """
+    Factory function to create a metric function based on the metric name.
+    
+    Args:
+        metric_name (str): The name of the metric to create.
+        *args: Variable length argument list.
+        **kwargs: Arbitrary keyword arguments.
+        
+    Returns:
+        An instance of a class that implements the metric function.
+    """
+    if metric_name == "fad-fx_encoder":
+        return FADFeatures(*args, **kwargs, type="fx_encoder", sample_rate=sample_rate, model_args=kwargs.get('fx_encoder_args', None) )
+    elif metric_name == "fad-AFxRep":
+        return FADFeatures(*args, **kwargs, type="AFxRep", sample_rate=sample_rate, model_args=kwargs.get('AFxRep_args', None) )
+    elif metric_name == "fad-AFxRep-mid":
+        return FADFeatures(*args, **kwargs, type="AFxRep-side", sample_rate=sample_rate, model_args=kwargs.get('AFxRep_args', None) )
+    elif metric_name == "fad-AFxRep-side":
+        return FADFeatures(*args, **kwargs, type="AFxRep-mid", sample_rate=sample_rate, model_args=kwargs.get('AFxRep_args', None) )
+    else:
+        raise ValueError(f"Unknown metric: {metric_name}")
+
+# Example usage:
+#metric_instance = metric_factory("pairwise-spectral")
+#```
