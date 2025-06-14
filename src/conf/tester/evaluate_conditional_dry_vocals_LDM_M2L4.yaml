@@ -14,8 +14,10 @@ compute_metrics: True #if true, the metrics will be computed after sampling
 
 metrics:
   - "histogram-features"
+  - "kad-fx_encoder"
+  - "kad-AFxRep-mid"
+  - "kad-AFxRep-side"
   - "fad-fx_encoder"
-  - "fad-AFxRep"
   - "fad-AFxRep-mid"
   - "fad-AFxRep-side"
   - "pairwise-spectral"
@@ -27,7 +29,6 @@ metrics:
   - "pairwise-mldr-lr"
   - "pairwise-mldr-ms"
   - "pairwise-fx_encoder"
-  - "pairwise-AFxRep"
   - "pairwise-AFxRep-mid"
   - "pairwise-AFxRep-side"
 

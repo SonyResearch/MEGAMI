@@ -21,11 +21,11 @@ source ~/myenv/bin/activate
 #conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_noisy10dB_v2.yaml
 #n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_noisy10dB_v2"
 
-conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_compression_noisy10dB.yaml
-n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_compression_noisy10dB"
+#conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_compression_noisy10dB.yaml
+#n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_compression_noisy10dB"
 
-#conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_compression_noisy0dB.yaml
-#n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_compression_noisy0dB"
+conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_compression_noisy0dB.yaml
+n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_compression_noisy0dB"
 
 #conf=conf_1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_noisy0dB_v2.yaml
 #n="1A_tencymastering_vocals_LDM_M2L4_fxnorm_randomreverb_noisy0dB_v2"
@@ -39,10 +39,10 @@ mkdir -p $PATH_EXPERIMENT
 
 
 # Number of GPUs to use
-#export CUDA_VISIBLE_DEVICES=2,3
-export CUDA_VISIBLE_DEVICES=0,1
-NUM_GPUS=2
-MASTER_PORT=29503
+#export CUDA_VISIBLE_DEVICES=2
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+NUM_GPUS=4
+MASTER_PORT=29502
 #MASTER_PORT=29500
 
 # Launch the training script with torchrun for DDP
@@ -50,7 +50,8 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT train_ddp.py --co
 		model_dir=$PATH_EXPERIMENT \
 		exp.optimizer.lr=1e-4 \
 		exp.resume=True \
-		exp.batch_size=8 \
+		exp.batch_size=4 \
+		exp.val_batch_size=4 \
 	  	exp.compile=True \
 		exp.skip_first_val=True \
 	  	logging=base_logging \

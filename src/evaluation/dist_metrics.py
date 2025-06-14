@@ -418,10 +418,12 @@ class KADFeatures(DistMetric):
                 dict_features_y_hat[key] = feat_y_hat
                 #dict_features_x[key] = feat_x
             
+        dict_output = {}
         if self.KAD_args.do_PCA_figure:
             fig=self.do_PCA_figure(dict_features_y, dict_features_y_hat)
             key= self.type+ "_PCA_figure"
             dict_output = {key: fig}
+        
 
         # Compute mean features
 

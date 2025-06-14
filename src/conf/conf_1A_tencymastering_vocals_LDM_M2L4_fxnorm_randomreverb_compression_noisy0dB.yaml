@@ -17,6 +17,7 @@ dset:
 diff_params:
   context_preproc:
     SNR_mean: 0.0
+    SNR_std: 5.0
 
 
 exp:

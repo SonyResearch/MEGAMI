@@ -23,6 +23,7 @@ class SamplerEulerHeun(Sampler):
             cond=None,
             cfg_scale=1.0,
             device=None,  # device
+            apply_inverse_transform=True  # whether to apply inverse transform
     ):
         self.cond = cond
         assert self.cond is not None, "Conditional input is None"
@@ -30,7 +31,7 @@ class SamplerEulerHeun(Sampler):
         print("cfg_scale", cfg_scale)
         self.cfg_scale = cfg_scale
 
-        return self.predict(shape, device)
+        return self.predict(shape, device, apply_inverse_transform=apply_inverse_transform)
 
     def predict_unconditional(
             self,
@@ -126,7 +127,8 @@ class SamplerEulerHeun(Sampler):
             shape,  # observations (lowpssed signal) Tensor with shape ??
             device,  # lambda function
             dtype=torch.float32,  # data type
-            blind=False
+            blind=False,
+            apply_inverse_transform=True  # whether to apply inverse transform
     ):
 
         # get the noise schedule
@@ -151,10 +153,13 @@ class SamplerEulerHeun(Sampler):
             x, x_den = self.step(x, t[i], t[i + 1], gamma[i], blind)
 
 
-        with torch.no_grad():
-            x_den_wave=self.diff_params.transform_inverse(x_den.detach())
+        if apply_inverse_transform:
+            with torch.no_grad():
+                x_den_wave=self.diff_params.transform_inverse(x_den.detach())
 
-        return x_den_wave.detach(), None
+            return x_den_wave.detach(), None
+        else:
+            return x_den.detach(), None
 
     def create_schedule(self, sigma_min=None, sigma_max=None, rho=None, T=None):
         """

@@ -215,6 +215,9 @@ class Tester():
             elif "fad" in metric:
                 from evaluation.dist_metrics import metric_factory
                 metrics_dict[metric]=metric_factory(metric, self.args.exp.sample_rate, **self.args.tester)
+            elif "kad" in metric:
+                from evaluation.dist_metrics import metric_factory
+                metrics_dict[metric]=metric_factory(metric, self.args.exp.sample_rate, **self.args.tester)
             elif "histogram" in metric:
                 from evaluation.feature_histograms import metric_factory
                 metrics_dict[metric] = metric_factory(metric, self.args.exp.sample_rate, **self.args.tester)
@@ -335,6 +338,16 @@ class Tester():
                 else:
                     preds=self.sample_conditional(mode, sample_x, B=B)
 
+                    is_nan = torch.isnan(preds).any()
+                    if is_nan:
+                        print("NaN values found in predictions")
+                        print("preds", preds.shape, "sample_y", sample_y.shape, "sample_x", sample_x.shape)
+                        print("preds", preds.std(), "sample_y", sample_y.std(), "sample_x", sample_x.std())
+                        #count number of NaN values in sample_x
+                        num_nan = torch.sum(torch.isnan(sample_x)).item()
+                        print(f"Number of NaN values in sample_x: {num_nan} of {sample_x.numel()}")
+
+
                 for b in range(B):
 
                     if self.use_wandb:
@@ -353,25 +366,29 @@ class Tester():
             
             if self.args.tester.compute_metrics:
                 for metric in self.metrics_dict.keys():
-                    print(f"Computing metric {metric}")
-                    result, result_dict=self.metrics_dict[metric].compute(dict_y, dict_y_hat, dict_x)
+                    try:
+                        print(f"Computing metric {metric}")
+                        result, result_dict=self.metrics_dict[metric].compute(dict_y, dict_y_hat, dict_x)
+        
+                        print("using wandb:", self.use_wandb)
+                        if self.use_wandb:
+                            if result is not None:
+                                print(f"Logging metric {metric} to wandb")
+                                self.log_metric(result, metric+"_"+k, step=self.it )
     
-                    print("using wandb:", self.use_wandb)
-                    if self.use_wandb:
-                        if result is not None:
-                            print(f"Logging metric {metric} to wandb")
-                            self.log_metric(result, metric+"_"+k, step=self.it )
-
-                        for key, value in result_dict.items():
-                            print(f"Logging {key} to wandb")
-                            if "figure" in key:
-                                # log figure as an image
-                                self.log_figure(value, key+"_"+k, step=self.it)
-                            else:
-                                self.log_metric(value, key+"_"+k, step=self.it)
-
-                    if not self.in_training:
-                        self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+                            for key, value in result_dict.items():
+                                print(f"Logging {key} to wandb")
+                                if "figure" in key:
+                                    # log figure as an image
+                                    self.log_figure(value, key+"_"+k, step=self.it)
+                                else:
+                                    self.log_metric(value, key+"_"+k, step=self.it)
+    
+                        if not self.in_training:
+                            self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+                    except Exception as e:
+                        print(f"Error computing metric {metric}: {e}")
+                        continue
                         
 
     def sample_conditional_style(self, mode, cond):

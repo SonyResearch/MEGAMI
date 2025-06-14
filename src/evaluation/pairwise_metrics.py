@@ -54,8 +54,12 @@ def load_fx_encoder(model_args, device):
         model.load_state_dict(new_state_dict, strict=False)
 
 
-    with open(os.path.join('.','utils','feature_extractors', 'networks', 'configs.yaml'), 'r') as f:
-        configs = yaml.full_load(f)
+    try:
+        with open(os.path.join('.','utils','feature_extractors', 'networks', 'configs.yaml'), 'r') as f:
+            configs = yaml.full_load(f)
+    except:
+        with open(model_args.config_file, 'r') as f:
+            configs = yaml.full_load(f)
 
     cfg_enc = configs['Effects_Encoder']['default']
 
@@ -66,7 +70,7 @@ def load_fx_encoder(model_args, device):
 
     return lambda x: effects_encoder(x)
 
-def load_AFxRep(model_args, device, sample_rate=44100):
+def load_AFxRep(model_args, device, sample_rate=44100, peak_scaling=True):
 
     assert model_args is not None, "model_args must be provided for AFxRep type"
 
@@ -111,8 +115,18 @@ def load_AFxRep(model_args, device, sample_rate=44100):
 
         bs= x.shape[0]
         #peak normalization. I do it because this is what ST-ITO get_param_embeds does. Not sure if it is good that this representation is invariant to gain
-        for batch_idx in range(bs):
-            x[batch_idx, ...] /= x[batch_idx, ...].abs().max().clamp(1e-8)
+        if peak_scaling:
+            x_max=[]
+            for batch_idx in range(bs):
+                #x[batch_idx, ...] /= x[batch_idx, ...].abs().max().clamp(1e-8)
+                x_max.append( x[batch_idx, ...].abs().max().clamp(1e-8) )
+            
+            if x.ndim == 3:
+                x_max=torch.stack(x_max, dim=0).view(bs, 1, 1)
+            elif x.ndim == 2:
+                x_max=torch.stack(x_max, dim=0).view(bs, 1)
+    
+            x=x/ x_max
 
         mid_embeddings, side_embeddings = model(x)
 

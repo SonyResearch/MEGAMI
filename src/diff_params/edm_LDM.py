@@ -30,6 +30,7 @@ class EDM_LDM(SDE):
         randomize_RMS=False,
         RMS_mean=-25.0,
         RMS_std=5.0,
+        randomize_parameters_at_test=False
         ):
 
         super().__init__(type, sde_hp)
@@ -63,6 +64,11 @@ class EDM_LDM(SDE):
         else:
             self.effect_randomizer_comp_test = effect_randomizer_comp_test
 
+        self.randomize_parameters_at_test = randomize_parameters_at_test
+
+        if self.randomize_parameters_at_test:
+            self.effect_randomizer_comp_test = self.effect_randomizer_comp
+            self.effect_randomizer_test = self.effect_randomizer
 
         self.randomize_RMS = randomize_RMS
         self.RMS_mean = RMS_mean
@@ -385,6 +391,14 @@ class EDM_LDM(SDE):
 
         return x_hat
 
+    def add_noise(self,x, is_test=False):
+        SNR_mean= self.context_preproc.SNR_mean
+        SNR_std= self.context_preproc.SNR_std   
+        if is_test and not self.randomize_parameters_at_test:
+            SNR_std=0.0
+        SNR= torch.randn(x.shape[0], device=x.device) * SNR_std + SNR_mean
+        x= utils.add_pink_noise(x, SNR)
+        return x
 
     def preprocessor(self, x, is_test=False):
             if self.effect_randomizer_comp is not None:
@@ -416,12 +430,7 @@ class EDM_LDM(SDE):
                         if self.context_preproc.noise_type=="pink":
                             #add pink noise to context
                             #print("Adding pink noise to context")
-                            SNR_mean= self.context_preproc.SNR_mean
-                            SNR_std= self.context_preproc.SNR_std   
-                            if is_test:
-                                SNR_std=0.0
-                            SNR= torch.randn(x.shape[0], device=x.device) * SNR_std + SNR_mean
-                            x= utils.add_pink_noise(x, SNR)
+                            x=self.add_noise(x, is_test=is_test)
                         else:
                             raise NotImplementedError("Only pink noise is implemented for now")
 
@@ -430,22 +439,27 @@ class EDM_LDM(SDE):
                     #    x= torch.cat([x, x], dim=1)
                 
             if self.randomize_RMS:
-                    if is_test:
-                        self.RMS=torch.zeros(x.shape[0], device=x.device) + self.RMS_mean
-                    else:
-                        self.RMS=torch.randn(x.shape[0], device=x.device) * self.RMS_std + self.RMS_mean
-
-                    self.RMS=self.RMS.unsqueeze(-1).unsqueeze(-1)
-
-                    x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
-
-                    gain= self.RMS - x_RMS
-                    gain_linear = 10 ** (gain / 20)
-                    #print("gain_linear", gain_linear.shape, gain_linear.device, x.shape, x.device)
-                    x=x* gain_linear.view(-1, 1, 1)
+                    x=self.apply_RMS_randomization(x, is_test=is_test)
 
 
             return x
+    
+    def apply_RMS_randomization(self, x, is_test=False):
+        if is_test and not self.randomize_parameters_at_test:
+            self.RMS=torch.zeros(x.shape[0], device=x.device) + self.RMS_mean
+        else:
+            self.RMS=torch.randn(x.shape[0], device=x.device) * self.RMS_std + self.RMS_mean
+
+        self.RMS=self.RMS.unsqueeze(-1).unsqueeze(-1)
+
+        x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
+
+        gain= self.RMS - x_RMS
+        gain_linear = 10 ** (gain / 20)
+        #print("gain_linear", gain_linear.shape, gain_linear.device, x.shape, x.device)
+        x=x* gain_linear.view(-1, 1, 1)
+
+        return x
         
     def transform_forward(self, x, compile=False, is_condition=False, is_test=False):
         #TODO: Apply forward transform here
