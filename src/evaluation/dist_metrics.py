@@ -8,7 +8,7 @@ from importlib import import_module
 import torch
 
 
-from evaluation.pairwise_metrics import load_AFxRep, load_fx_encoder
+from evaluation.feature_extractors import load_AFxRep, load_fx_encoder, load_fx_encoder_plusplus, load_MERT, load_CLAP
 
 from utils.log import make_PCA_figure
 
@@ -146,6 +146,16 @@ class DistMetric:
 
 
             #self.feat_extractor = load_effects_encoder(ckpt_path=ckpt_path).to(self.device)
+        elif self.type == "fx_encoder_++":
+            self.model_args= kwargs.get("fx_encoder_plusplus_args", None)
+
+            assert self.model_args is not None, "model_args must be provided for fx_encoder_plusplus type"
+
+            self.distance_type=self.model_args.distance_type
+
+            self.feat_extractor = load_fx_encoder_plusplus(self.model_args, self.device)
+
+            #self.feat_extractor = load_effects_encoder(ckpt_path=ckpt_path).to(self.device)
         
         elif self.type== "AFxRep-mid" or self.type== "AFxRep-side" or self.type== "AFxRep":
 
@@ -185,7 +195,21 @@ class DistMetric:
                 self.feat_extractor = feat_extractor_side
             else:
                 self.feat_extractor = feat_extractor
+        elif self.type == "MERT":
+            self.model_args= kwargs.get("MERT_args", None)
+            assert self.model_args is not None, "model_args must be provided for MERT type"
 
+            self.feat_extractor = load_MERT(self.model_args, self.device)
+
+        elif self.type == "CLAP":
+            self.model_args= kwargs.get("CLAP_args", None)
+            assert self.model_args is not None, "model_args must be provided for CLAP type"
+
+            self.feat_extractor = load_CLAP(self.model_args, self.device)
+
+
+        else:
+            raise ValueError(f"Unknown type: {self.type}. Supported types: fx_encoder, fx_encoder_plusplus, AFxRep-mid, AFxRep-side, AFxRep")
 
 
     def compute(self, *args, **kwargs):
@@ -212,7 +236,7 @@ class DistMetric:
 
 
 
-    def do_PCA_figure(self, dict_features_y, dict_features_y_hat, dict_features_x=None):
+    def do_PCA_figure(self, dict_features_y, dict_features_y_hat, dict_features_x=None, fit_mode="target", dict_cluster=None):
         """
         Perform PCA on the features and create a figure.
         
@@ -229,26 +253,50 @@ class DistMetric:
         y_values = list(dict_features_y.values())
         y_values = torch.cat(y_values, dim=0)
 
-        print("y_values shape:", y_values.shape)
+        y_hat_values = list(dict_features_y_hat.values())
+        y_hat_values = torch.cat(y_hat_values, dim=0)
 
+
+        if dict_cluster is not None:
+            clusters= list(dict_cluster.values())
+            clusters = [c.unsqueeze(0) if c.dim() == 0 else c for c in clusters]
+            clusters = torch.cat(clusters, dim=0)
+
+            #check different clusters (0,1,2,3...)
+            assert len(torch.unique(clusters)) == 2, "Only two clusters are supported for PCA visualization"
+            C0= clusters == 0
+            C1= clusters == 1
+
+        #manage Nans in y_values
+        y_values=torch.nan_to_num(y_values, nan=0)
+        y_hat_values=torch.nan_to_num(y_hat_values, nan=0)
 
         if self.pca is None:
             self.pca = PCA(n_components=2)
-            pca_result = self.pca.fit_transform(y_values.cpu().numpy())
+            if fit_mode == "target":
+                pca_result = self.pca.fit_transform(y_values.cpu().numpy())
+            elif fit_mode == "all":
+                self.pca = self.pca.fit(torch.cat([y_values,y_hat_values], dim=0).cpu().numpy())
+                pca_result= self.pca.transform(y_values.cpu().numpy())
         else:
             pca_result = self.pca.transform(y_values.cpu().numpy())
 
 
-        y_hat_values = list(dict_features_y_hat.values())
-        y_hat_values = torch.cat(y_hat_values, dim=0)
-
         #project y_hat values into the same PCA space
         pca_result_hat = self.pca.transform(y_hat_values.cpu().numpy())
 
-        data_dict = {
-            "y": pca_result,
-            "y_hat": pca_result_hat
-        }
+        if dict_cluster is not None:
+           data_dict = {
+               "y_C0": pca_result[C0],
+               "y_hat_C0": pca_result_hat[C0],
+               "y_C1": pca_result[C1],
+               "y_hat_C1": pca_result_hat[C1]
+           }
+        else:
+           data_dict = {
+               "y": pca_result,
+               "y_hat": pca_result_hat
+           }
 
         if dict_features_x is not None:
             x_values = list(dict_features_x.values())
@@ -260,7 +308,7 @@ class DistMetric:
 
 
 
-        fig= make_PCA_figure(data_dict)
+        fig= make_PCA_figure(data_dict, title=self.type + " PCA")
 
 
         return fig
@@ -279,6 +327,7 @@ class KADFeatures(DistMetric):
         type=None,
         sample_rate=44100,
         KAD_args=None,
+        classwise=False,
                   *args, **kwargs):
         """
         Initialize the PairwiseSpectral instance.
@@ -289,6 +338,8 @@ class KADFeatures(DistMetric):
         """
         self.type = type
 
+        self.classwise = classwise
+
         self.device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -296,10 +347,42 @@ class KADFeatures(DistMetric):
 
         assert self.KAD_args is not None, "FAD_args must be provided"
 
+        if self.KAD_args.do_PCA_figure:
+            self.pca = None
+
         self.bandwidth = None
 
         super().__init__(self.type, sample_rate, *args, **kwargs)
     
+    def calculate_KAD_distance_classwise(self, dict_features_y, dict_features_y_hat, dict_cluster):
+
+        if dict_cluster is not None:
+            clusters= list(dict_cluster.values())
+            clusters = [c.unsqueeze(0) if c.dim() == 0 else c for c in clusters]
+            clusters = torch.cat(clusters, dim=0)
+
+            #check different clusters (0,1,2,3...)
+            assert len(torch.unique(clusters)) == 2, "Only two clusters are supported for PCA visualization"
+            C0= clusters == 0
+            C1= clusters == 1
+
+        y= torch.cat(list(dict_features_y.values()), dim=0)
+        y_hat= torch.cat(list(dict_features_y_hat.values()), dim=0)
+
+        y_C0= y[C0]
+        y_hat_C0= y_hat[C0]
+
+        with torch.no_grad():
+            KAD_C0=calc_kernel_audio_distance(y_C0, y_hat_C0, device=self.device, bandwidth=self.bandwidth, kernel=self.KAD_args.kernel, precision=torch.float32)
+
+        y_C1= y[C1]
+        y_hat_C1= y_hat[C1]
+        with torch.no_grad():
+            KAD_C1=calc_kernel_audio_distance(y_C1, y_hat_C1, device=self.device, bandwidth=self.bandwidth, kernel=self.KAD_args.kernel, precision=torch.float32)
+        
+        KAD= (KAD_C0 + KAD_C1) / 2
+
+        return KAD.cpu().item()
     def calculate_KAD_distance(self, dict_features_y, dict_features_y_hat):
         y= torch.cat(list(dict_features_y.values()), dim=0)
         y_hat= torch.cat(list(dict_features_y_hat.values()), dim=0)
@@ -316,7 +399,7 @@ class KADFeatures(DistMetric):
 
 
 
-    def compute(self, dict_y, dict_y_hat, dict_x, dict_p_hat=None,   *args, **kwargs):
+    def compute(self, dict_y, dict_y_hat, dict_x, dict_p_hat=None, dict_cluster=None, *args, **kwargs):
         """
         Compute the pairwise spectral metric.
         
@@ -331,6 +414,8 @@ class KADFeatures(DistMetric):
         print("Computing KAD distance...")
 
 
+        if self.classwise:
+            assert dict_cluster is not None, "dict_cluster must be provided if classwise is True"
 
         dict_features_y={}
         dict_features_y_hat={}
@@ -420,7 +505,7 @@ class KADFeatures(DistMetric):
             
         dict_output = {}
         if self.KAD_args.do_PCA_figure:
-            fig=self.do_PCA_figure(dict_features_y, dict_features_y_hat)
+            fig=self.do_PCA_figure(dict_features_y, dict_features_y_hat, fit_mode="target", dict_cluster=dict_cluster)
             key= self.type+ "_PCA_figure"
             dict_output = {key: fig}
         
@@ -436,8 +521,13 @@ class KADFeatures(DistMetric):
         #FAD_distance = self.calculate_FAD_distance(y_mean, y_cov, y_hat_mean, y_hat_cov)
         if self.bandwidth is None:
             self.calculate_bandwidth(dict_features_y)
+        
+        if self.classwise:
+            #calculate KAD distance for each class
+            KAD_distance = self.calculate_KAD_distance_classwise(dict_features_y, dict_features_y_hat, dict_cluster)
+        else:
 
-        KAD_distance = self.calculate_KAD_distance(dict_features_y, dict_features_y_hat)
+            KAD_distance = self.calculate_KAD_distance(dict_features_y, dict_features_y_hat)
 
 
         return  KAD_distance, dict_output
@@ -620,7 +710,7 @@ class FADFeatures(DistMetric):
 
 
 
-        fig= make_PCA_figure(data_dict)
+        fig= make_PCA_figure(data_dict, title=self.type + " PCA")
 
 
         return fig
@@ -629,7 +719,7 @@ class FADFeatures(DistMetric):
 
 
 
-    def compute(self, dict_y, dict_y_hat, dict_x, dict_p_hat=None,   *args, **kwargs):
+    def compute(self, dict_y, dict_y_hat, dict_x, dict_p_hat=None, dict_cluster=None,   *args, **kwargs):
         """
         Compute the pairwise spectral metric.
         
@@ -732,7 +822,7 @@ class FADFeatures(DistMetric):
                 #dict_features_x[key] = feat_x
             
         if self.FAD_args.do_PCA_figure:
-            fig=self.do_PCA_figure(dict_features_y, dict_features_y_hat)
+            fig=self.do_PCA_figure(dict_features_y, dict_features_y_hat, fit_mode="target")
             key= self.type+ "_PCA_figure"
             dict_output = {key: fig}
 
@@ -764,21 +854,29 @@ def metric_factory(metric_name, sample_rate, *args, **kwargs):
         An instance of a class that implements the metric function.
     """
     if metric_name == "fad-fx_encoder":
-        return FADFeatures(*args, **kwargs, type="fx_encoder", sample_rate=sample_rate, model_args=kwargs.get('fx_encoder_args', None) )
+        return FADFeatures(*args, **kwargs, type="fx_encoder", sample_rate=sample_rate )
     elif metric_name == "fad-AFxRep":
-        return FADFeatures(*args, **kwargs, type="AFxRep", sample_rate=sample_rate, model_args=kwargs.get('AFxRep_args', None) )
+        return FADFeatures(*args, **kwargs, type="AFxRep", sample_rate=sample_rate)
     elif metric_name == "fad-AFxRep-mid":
-        return FADFeatures(*args, **kwargs, type="AFxRep-side", sample_rate=sample_rate, model_args=kwargs.get('AFxRep_args', None) )
+        return FADFeatures(*args, **kwargs, type="AFxRep-side", sample_rate=sample_rate)
     elif metric_name == "fad-AFxRep-side":
-        return FADFeatures(*args, **kwargs, type="AFxRep-mid", sample_rate=sample_rate, model_args=kwargs.get('AFxRep_args', None) )
+        return FADFeatures(*args, **kwargs, type="AFxRep-mid", sample_rate=sample_rate)
     elif metric_name == "kad-fx_encoder":
-        return KADFeatures(*args, **kwargs, type="fx_encoder", sample_rate=sample_rate, model_args=kwargs.get('fx_encoder_args', None) )
+        return KADFeatures(*args, **kwargs, type="fx_encoder", sample_rate=sample_rate)
     elif metric_name == "kad-AFxRep":
-        return KADFeatures(*args, **kwargs, type="AFxRep", sample_rate=sample_rate, model_args=kwargs.get('AFxRep_args', None) )
+        return KADFeatures(*args, **kwargs, type="AFxRep", sample_rate=sample_rate)
     elif metric_name == "kad-AFxRep-mid":
-        return KADFeatures(*args, **kwargs, type="AFxRep-side", sample_rate=sample_rate, model_args=kwargs.get('AFxRep_args', None) )
+        return KADFeatures(*args, **kwargs, type="AFxRep-side", sample_rate=sample_rate)
     elif metric_name == "kad-AFxRep-side":
-        return KADFeatures(*args, **kwargs, type="AFxRep-mid", sample_rate=sample_rate, model_args=kwargs.get('AFxRep_args', None) )
+        return KADFeatures(*args, **kwargs, type="AFxRep-mid", sample_rate=sample_rate)
+    elif metric_name == "kad-class-fx_encoder":
+        return KADFeatures(*args, **kwargs, type="fx_encoder", sample_rate=sample_rate, classwise=True)
+    elif metric_name == "kad-class-AFxRep":
+        return KADFeatures(*args, **kwargs, type="AFxRep", sample_rate=sample_rate, classwise=True)
+    elif metric_name == "kad-class-AFxRep-mid":
+        return KADFeatures(*args, **kwargs, type="AFxRep-side", sample_rate=sample_rate, classwise=True)
+    elif metric_name == "kad-class-AFxRep-side":
+        return KADFeatures(*args, **kwargs, type="AFxRep-mid", sample_rate=sample_rate, classwise=True)
     else:
         raise ValueError(f"Unknown metric: {metric_name}")
 

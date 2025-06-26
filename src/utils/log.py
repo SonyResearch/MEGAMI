@@ -821,7 +821,7 @@ def lineplot(x=None, dict=None, xaxis="linear", yaxis="log"):
 
     return fig
 
-def make_PCA_figure(data_dict, num_bins=20):
+def make_PCA_figure(data_dict, num_bins=20, title="PCA"):
 
     fig = plt.figure(figsize=(6, 5), dpi=200)
     gs = fig.add_gridspec(
@@ -904,8 +904,10 @@ def make_PCA_figure(data_dict, num_bins=20):
     ax_histx.set_ylabel("Count")
     ax_histy.set_xlabel("Count")
 
-    ax_histx.legend(loc="upper right")
+    #ax_histx.legend(loc="upper right")
 
+    #add title
+    fig.suptitle(title, fontsize=16, fontweight='bold')
 
     return fig
 

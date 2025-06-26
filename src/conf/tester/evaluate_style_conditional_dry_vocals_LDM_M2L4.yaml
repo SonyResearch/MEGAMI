@@ -13,16 +13,14 @@ compute_metrics: True #if true, the metrics will be computed after sampling
 #metrics: ["pairwise-spectral", "pairwise-panning", "pairwise-dynamic", "pairwise-loudness", "pairwise-mss-lr", "pairwise-mss-ms", "pairwise-mldr-lr", "pairwise-mldr-ms", "pairwise-fx_encoder", "pairwise-AFxRep"]
 
 metrics:
-  - "fad-AFxRep"
-  - "fad-AFxRep-mid"
-  - "fad-AFxRep-side"
-  - "pairwise-style-AFxRep"
+  - "kad-AFxRep-mid"
+  - "kad-AFxRep-side"
   - "pairwise-style-AFxRep-mid"
   - "pairwise-style-AFxRep-side"
 
 checkpoint: None
 
-batch_size: 10 #batch size for sampling, should be 1 for conditional sampling
+batch_size: 16 #batch size for sampling, should be 1 for conditional sampling
 
 sampling_params:
   same_as_training: False #if true, the sampling parameters will be the same as the ones used for training (sigma_data, sigma_min, sigma_max and rho)
@@ -56,6 +54,12 @@ AFxRep_args:
 
 FAD_args:
   do_PCA_figure: True #if True, the FAD figure will be computed
+
+KAD_args: 
+  do_PCA_figure: True #if True, the FAD figure will be computed
+  kernel: "gaussian" #kernel to use for the KAD metric
+  PCA_fit_mode: "target"
+
 
 
 

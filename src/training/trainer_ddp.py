@@ -354,7 +354,7 @@ class Trainer():
 
         #print("sample", sample.std(), sample.shape)
         #try:
-        error, sigma = self.diff_params.loss_fn(self.network, sample=y, context=x, ema=self.ema)
+        error, sigma, x, y = self.diff_params.loss_fn(self.network, sample=y, context=x, ema=self.ema)
         #except Exception as e:
         #    print(e)
         #    return

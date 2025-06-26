@@ -64,6 +64,10 @@ unconditional:
 fx_encoder_args:
   distance_type: "cosine" #distance metric to use for the fx encoder
   ckpt_path: "utils/feature_extractors/ckpt/fxenc_default.pt"
+
+fx_encoder_args:
+  distance_type: "cosine" #distance metric to use for the fx encoder
+  ckpt_path: "utils/feature_extractors/ckpt/fxenc_plusplus_default.pt"
   
 AFxRep_args:
   distance_type: "cosine" #distance metric to use for the AFxRep

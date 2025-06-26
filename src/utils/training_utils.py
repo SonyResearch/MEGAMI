@@ -496,6 +496,9 @@ def align_batch(y, x, sample_rate):
 
     return y.to(y_device).to(y_dtype), x.to(x_device).to(x_dtype)
 
+def get_pink_noise_magnitude(freqs, device='cpu'):
+    a=torch.ones_like(freqs, device=device)
+    return a / torch.sqrt(torch.clamp(freqs, min=1e-6))  # Avoid division by zero
 
 def generate_pink_noise(shape, device='cpu'):
     """
@@ -521,7 +524,8 @@ def generate_pink_noise(shape, device='cpu'):
     
     # Scale the amplitude by 1/sqrt(frequency) to approximate pink noise
     # Avoid division by zero by clamping frequencies to a minimum value
-    fft /= torch.sqrt(torch.clamp(freqs, min=1e-6)).unsqueeze(0).unsqueeze(0)
+    H= get_pink_noise_magnitude(freqs, device=device)
+    fft*=H.unsqueeze(0).unsqueeze(0)
     
     # Perform inverse FFT to return to time domain
     pink_noise = torch.fft.irfft(fft, n=T, dim=-1)
@@ -559,3 +563,157 @@ def add_pink_noise(signal, snr_db):
     noisy_signal = signal + scaled_noise
     
     return noisy_signal
+
+
+def Gauss_smooth(X,f,Noct=1, smooth_filter=None):
+    """
+    based on https://github.com/IoSR-Surrey/MatlabToolbox/blob/4bff1bb2da7c95de0ce2713e7c710a0afa70c705/%2Biosr/%2Bdsp/smoothSpectrum.m
+    Smooths the magnitude spectrum X using a Gaussian filter.
+
+    Args:
+        X (torch.Tensor): Input spectrum to be smoothed, shape (B, N,).
+        f (torch.Tensor): Frequency bins corresponding to the spectrum, shape (N,).
+        Noct (int, optional): Number of octaves for smoothing. Default is 1
+    Returns:
+        torch.Tensor: Smoothed spectrum, same shape as X.
+    """
+
+    def gauss_f(f_x,F,Noct):
+        sigma = (F/Noct)/np.pi
+        g = torch.exp(-(((f_x-F)**2)/(2*(sigma**2))))
+        g = g/torch.sum(g)
+        return g
+
+    shape=X.shape
+
+    x_oct = X.clone().view(-1, shape[-1])  # Initialize smoothed output
+    if Noct>0:
+        for i in range(1,len(f)):
+            g = gauss_f(f,f[i],Noct)
+            g=g.to(X.device).view(1, -1)
+            x_oct[...,i] = torch.sum(g*X)
+
+
+        x_oct = x_oct.clamp(min=0)  # Ensure non-negative values
+
+    return x_oct.view(shape)  # Reshape back to original dimensions
+
+def prepare_smooth_filter(f, Noct=1):
+     f_matrix = f.unsqueeze(0)  # Shape: [1, N]
+     F_matrix = f.unsqueeze(1)  # Shape: [N, 1]
+     
+     # Calculate sigma for each center frequency
+     sigma = (F_matrix / Noct) / np.pi  # Shape: [N, 1]
+     
+     # Calculate Gaussian weights for all frequency pairs at once
+     g = torch.exp(-((f_matrix - F_matrix)**2) / (2 * (sigma**2)))  # Shape: [N, N]
+     
+     # Normalize each row to sum to 1
+     g = g / g.sum(dim=1, keepdim=True)  # Shape: [N, N]
+     
+     # Move to the same device as X
+     return g
+
+def Gauss_smooth_vectorized(X, f, Noct=1, smooth_filter=None):
+    """
+    based on https://github.com/IoSR-Surrey/MatlabToolbox/blob/4bff1bb2da7c95de0ce2713e7c710a0afa70c705/%2Biosr/%2Bdsp/smoothSpectrum.m
+    Smooths the magnitude spectrum X using a Gaussian filter.
+
+    Args:
+        X (torch.Tensor): Input spectrum to be smoothed, shape (B, N,).
+        f (torch.Tensor): Frequency bins corresponding to the spectrum, shape (N,).
+        Noct (int, optional): Number of octaves for smoothing. Default is 1
+    Returns:
+        torch.Tensor: Smoothed spectrum, same shape as X.
+    """
+    shape = X.shape
+    x_oct = X.clone().view(-1, shape[-1])  # Initialize smoothed output
+    
+    if Noct > 0:
+        # Vectorized implementation
+        # Create a matrix of all frequency pairs
+        if smooth_filter is None:
+            f_matrix = f.unsqueeze(0)  # Shape: [1, N]
+            F_matrix = f.unsqueeze(1)  # Shape: [N, 1]
+            
+            # Calculate sigma for each center frequency
+            sigma = (F_matrix / Noct) / np.pi  # Shape: [N, 1]
+            
+            # Calculate Gaussian weights for all frequency pairs at once
+            g = torch.exp(-((f_matrix - F_matrix)**2) / (2 * (sigma**2)))  # Shape: [N, N]
+            
+            # Normalize each row to sum to 1
+            g = g / g.sum(dim=1, keepdim=True)  # Shape: [N, N]
+            
+            # Move to the same device as X
+        else:
+            g=smooth_filter
+
+        g = g.to(X.device)
+        
+        # Apply the filter to each batch element
+        # Skip the first bin (i=0) as in the original loop
+        x_oct_new = torch.matmul(x_oct, g[1:].T)  # Shape: [B, N-1]
+        
+        # Keep the first bin unchanged and update the rest
+        x_oct[:, 1:] = x_oct_new
+        
+        # Ensure non-negative values
+        x_oct = x_oct.clamp(min=0)
+    
+    return x_oct.view(shape)  # Reshape back to original dimensions
+
+def create_music_mean_spectrum_curve(freqs_Hz, device='cpu'):
+    """
+    Create a target curve approximating the mean spectrum of music.
+    
+    Args:
+        freqs_Hz (torch.Tensor or np.ndarray): Frequency bins (Hz).
+        device (str): Device for tensor computation ('cpu' or 'cuda').
+    
+    Returns:
+        torch.Tensor: Target curve for equalization.
+    """
+    import torch
+    import numpy as np
+    
+    # Convert to numpy for easier manipulation if needed
+    if isinstance(freqs_Hz, torch.Tensor):
+        freqs_np = freqs_Hz.cpu().numpy()
+    else:
+        freqs_np = freqs_Hz
+    
+    # Create the curve in segments
+    target = np.ones_like(freqs_np)
+    
+    # Define the segments
+    f1 = 100    # First transition point
+    f2 = 1000   # Second transition point
+    f3 = 5000  # Third transition point
+    
+    # Calculate the curve for each segment
+    for i, f in enumerate(freqs_np):
+        if f < f1:
+            # Below 100Hz: -3dB/octave roll-off
+            target[i] = np.sqrt(f / f1)
+        elif f <= f2:
+            # 100Hz to 1kHz: Flat
+            target[i] = 1.0
+        elif f <= f3:
+            # 1kHz to 10kHz: -3dB/octave roll-off
+            target[i] = np.sqrt(f2 / f)
+        else:
+            # Above 10kHz: -6dB/octave roll-off
+            # Calculate what the value would be at 10kHz using the -3dB/octave formula
+            val_at_f3 = np.sqrt(f2 / f3)
+            # Continue from that value with a -6dB/octave slope
+            target[i] = val_at_f3 * (f3 / f)
+    
+    # Convert back to tensor
+    target_curve = torch.tensor(target, device=device)
+    target_curve[0]=target_curve[1]  # Ensure the first value is not zero to avoid division issues
+
+    #decrease 20dB
+    target_curve = target_curve * 0.1  # Scale down to -20dB
+    
+    return target_curve

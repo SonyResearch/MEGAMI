@@ -137,6 +137,7 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
     def __init__(self,
         fs=44100,
         segment_length=131072,
+        num_tracks=-1,
         base_dir=None,
         mode="dry-wet",
         normalize_params=None,
@@ -176,6 +177,8 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
 
         self.stereo=stereo
 
+        self.num_tracks=num_tracks
+
         if self.normalize_mode=="loudness_dry":
             meter = pyln.Meter(fs)
             def normaliser_fn(x):
@@ -214,12 +217,16 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
 
         counter=0
 
+
+        self.id_list= self.id_list[:num_tracks] if num_tracks != -1 else self.id_list
+
         #for dry_file, wet_file in tqdm(self.pair_list):
         for id_i in tqdm(self.id_list):
             #if counter >= num_examples and num_examples!= -1:
             #    break
             print("mode", mode)
-            if mode=="dry-wet":
+            if mode=="dry-wet" or mode=="dry-wet-train":
+
                 dry_file=os.path.join(id_i, "vocals.wav")
                 dry_file=Path(dry_file)
 
@@ -241,7 +248,7 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
                 x_long=x_dry_long+torch.randn_like(x_dry_long)*0.0001 #add a small noise to avoid NaNs in the future
 
             
-            elif mode=="dryfxnorm-wet":
+            elif mode=="dryfxnorm-wet" or mode=="dryfxnorm-wet-train":
                 
                 #dry_file=id / "dry" / "vocals_normalized.wav"
                 print("loading dryfxnorm-wet", id_i)
@@ -281,7 +288,7 @@ class TencyMastering_Vocals_Test(torch.utils.data.Dataset):
                 x_long= x_dry_long
 
                 
-            elif mode=="wetfxnorm-wet":
+            elif mode=="wetfxnorm-wet" or mode=="wetfxnorm-wet-train":
 
                 print("loading wetfxnorm-wet", id_i)
                 #dry_file=id / "wet" / "vocals_normalized.wav"
@@ -546,8 +553,8 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
             assert wet_file.exists(), "wet file does not exist: {}".format(wet_file)
 
 
-            dry_duration, dry_total_frames, dry_samplerate=get_audio_length(dry_file)
-            wet_duration, wet_total_frames, wet_samplerate=get_audio_length(wet_file)
+            dry_duration, dry_total_frames, dry_samplerate=get_audio_length(str(dry_file))
+            wet_duration, wet_total_frames, wet_samplerate=get_audio_length(str(wet_file))
 
             assert dry_total_frames== wet_total_frames, "dry and wet files must have the same number of frames, got {} and {}".format(dry_total_frames, wet_total_frames)
 
@@ -557,7 +564,7 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
             end=start+ self.segment_length
 
 
-            out=load_audio(dry_file, start, end, stereo=self.stereo)
+            out=load_audio(str(dry_file), start, end, stereo=self.stereo)
 
             if out is None:
                 continue
@@ -566,7 +573,7 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
                 assert fs==self.fs, "wrong sampling rate: {}".format(fs)
                 
 
-            out= load_audio(wet_file, start, end, stereo=self.stereo)
+            out= load_audio(str(wet_file), start, end, stereo=self.stereo)
 
             if out is None:
                 continue
@@ -610,11 +617,5 @@ class TencyMastering_Vocals(torch.utils.data.IterableDataset):
             #except Exception as e:
             #    print(e)
             #    continue
-
-    def __getitem__(self, idx):
-        return self.test_samples[idx]
-
-    def __len__(self):
-        return len(self.test_samples)
 
 

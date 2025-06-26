@@ -9,7 +9,6 @@ from einops import rearrange
 from torch import nn
 from torch.nn import functional as F
 
-from networks.transformer import ContinuousTransformer
 
 class FourierFeatures(nn.Module):
     def __init__(self, in_features, out_features, std=1.):
@@ -136,6 +135,29 @@ class DiffusionTransformer(nn.Module):
             if self.global_cond_type == "adaLN":
                 # The global conditioning is projected to the embed_dim already at this point
                 global_dim = embed_dim
+
+            from networks.transformer import ContinuousTransformer
+            self.transformer = ContinuousTransformer(
+                dim=embed_dim,
+                depth=depth,
+                dim_heads=embed_dim // num_heads,
+                dim_in=dim_in * patch_size,
+                dim_out=io_channels * patch_size,
+                cross_attend = cond_token_dim > 0,
+                cond_token_dim = cond_embed_dim,
+                global_cond_dim=global_dim,
+                **kwargs
+            )
+
+        elif self.transformer_type == "continuous_transformer_v2":
+
+            global_dim = None
+
+            if self.global_cond_type == "adaLN":
+                # The global conditioning is projected to the embed_dim already at this point
+                global_dim = embed_dim
+
+            from networks.transformer_v2 import ContinuousTransformer
 
             self.transformer = ContinuousTransformer(
                 dim=embed_dim,

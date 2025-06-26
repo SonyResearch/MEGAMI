@@ -16,6 +16,8 @@ class SamplerEulerHeun(Sampler):
 
         # order of the sampler
         self.order = self.args.tester.sampling_params.order
+        self.cond=None
+        self.cfg_scale = 1.0
 
     def predict_conditional(
             self,

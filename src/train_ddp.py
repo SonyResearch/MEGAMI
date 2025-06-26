@@ -57,6 +57,25 @@ def _main(rank, world_size, args):
     except:
         print("Second validation set not found, using only first one")
         pass
+    try:
+        if rank == 0:
+            val_set = hydra.utils.instantiate(args.dset.validation_3)
+            val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=args.exp.val_batch_size, num_workers=args.exp.num_workers,
+                                                 pin_memory=True, worker_init_fn=lambda x: worker_init_fn(x, rank=rank))
+            val_set_dict[args.dset.validation_3.mode] = val_loader
+    except:
+        print("Second validation set not found, using only first one")
+        pass
+
+    try:
+        if rank == 0:
+            val_set = hydra.utils.instantiate(args.dset.validation_4)
+            val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=args.exp.val_batch_size, num_workers=args.exp.num_workers,
+                                                 pin_memory=True, worker_init_fn=lambda x: worker_init_fn(x, rank=rank))
+            val_set_dict[args.dset.validation_4.mode] = val_loader
+    except:
+        print("Second validation set not found, using only first one")
+        pass
 
     # Diffusion parameters
     diff_params = hydra.utils.instantiate(args.diff_params)

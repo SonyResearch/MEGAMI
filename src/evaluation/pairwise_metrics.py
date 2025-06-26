@@ -4,6 +4,7 @@ import os
 from importlib import import_module
 import yaml
 import torch
+from evaluation.feature_extractors import load_AFxRep, load_fx_encoder, load_fx_encoder_plusplus
 
 class PairwiseMetric:
     """
@@ -23,133 +24,6 @@ class PairwiseMetric:
 
     def compute(self, *args, **kwargs):
         raise NotImplementedError("Subclasses should implement this method.")
-
-
-def load_fx_encoder(model_args, device):
-    """
-    Load the FX Encoder model.
-    
-    Args:
-        model_args: Arguments for the FX Encoder model.
-        device: Device to load the model on (CPU or GPU).
-        
-    Returns:
-        a function that extracts features from audio.
-    """
-    assert model_args is not None, "model_args must be provided for fx_encoder type"
-
-    ckpt_path=model_args.ckpt_path
-
-    #from utils.feature_extractors.fx_encoder import load_effects_encoder
-    from utils.feature_extractors.networks import Effects_Encoder
-
-    def reload_weights(model, ckpt_path, device):
-        checkpoint = torch.load(ckpt_path, map_location=device)
-    
-        from collections import OrderedDict
-        new_state_dict = OrderedDict()
-        for k, v in checkpoint["model"].items():
-            name = k[7:] # remove `module.`
-            new_state_dict[name] = v
-        model.load_state_dict(new_state_dict, strict=False)
-
-
-    try:
-        with open(os.path.join('.','utils','feature_extractors', 'networks', 'configs.yaml'), 'r') as f:
-            configs = yaml.full_load(f)
-    except:
-        with open(model_args.config_file, 'r') as f:
-            configs = yaml.full_load(f)
-
-    cfg_enc = configs['Effects_Encoder']['default']
-
-    effects_encoder = Effects_Encoder(cfg_enc)
-    reload_weights(effects_encoder, ckpt_path, device)
-    effects_encoder.to(device)
-    effects_encoder.eval()
-
-    return lambda x: effects_encoder(x)
-
-def load_AFxRep(model_args, device, sample_rate=44100, peak_scaling=True):
-
-    assert model_args is not None, "model_args must be provided for AFxRep type"
-
-    ckpt_path=model_args.ckpt_path
-
-    config_path = os.path.join(os.path.dirname(ckpt_path), "config.yaml")
-
-    with open(config_path) as f:
-        config = yaml.safe_load(f)
-    
-    encoder_configs = config["model"]["init_args"]["encoder"]
-
-    module_path, class_name = encoder_configs["class_path"].rsplit(".", 1)
-    module_path = module_path.replace("lcap", "utils.st_ito")
-
-    module = import_module(module_path)
-
-    model = getattr(module, class_name)(**encoder_configs["init_args"])
-
-    checkpoint = torch.load(ckpt_path, map_location="cpu")
-
-    # load state dicts
-    state_dict = {}
-    for k, v in checkpoint["state_dict"].items():
-        if k.startswith("encoder"):
-            state_dict[k.replace("encoder.", "", 1)] = v
-
-    model.load_state_dict(state_dict)
-
-    model.eval()
-
-    model.to(device)
-
-    def wrapper_fn(x, sample_rate):
-
-        x=x.to(device)
-
-        #x=torch.transpose(x,-1,-2)
-
-        if sample_rate != 48000:
-            x=torchaudio.functional.resample(x, sample_rate, 48000)
-
-        bs= x.shape[0]
-        #peak normalization. I do it because this is what ST-ITO get_param_embeds does. Not sure if it is good that this representation is invariant to gain
-        if peak_scaling:
-            x_max=[]
-            for batch_idx in range(bs):
-                #x[batch_idx, ...] /= x[batch_idx, ...].abs().max().clamp(1e-8)
-                x_max.append( x[batch_idx, ...].abs().max().clamp(1e-8) )
-            
-            if x.ndim == 3:
-                x_max=torch.stack(x_max, dim=0).view(bs, 1, 1)
-            elif x.ndim == 2:
-                x_max=torch.stack(x_max, dim=0).view(bs, 1)
-    
-            x=x/ x_max
-
-        mid_embeddings, side_embeddings = model(x)
-
-        # check for nan
-        if torch.isnan(mid_embeddings).any():
-            print("Warning: NaNs found in mid_embeddings")
-            mid_embeddings = torch.nan_to_num(mid_embeddings)
-        elif torch.isnan(side_embeddings).any():
-            print("Warning: NaNs found in side_embeddings")
-            side_embeddings = torch.nan_to_num(side_embeddings)
-
-        mid_embeddings = torch.nn.functional.normalize(mid_embeddings, p=2, dim=-1)
-        side_embeddings = torch.nn.functional.normalize(side_embeddings, p=2, dim=-1)
-        
-        embeddings_all= torch.cat([mid_embeddings, side_embeddings], dim=-1)
-
-        return embeddings_all
-
-    feat_extractor = lambda x: wrapper_fn(x, sample_rate=sample_rate)
-
-    return feat_extractor
-
-
 
 class PairwiseFeatures(PairwiseMetric):
     """

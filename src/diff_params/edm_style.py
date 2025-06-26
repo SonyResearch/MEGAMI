@@ -13,6 +13,8 @@ import torch.distributed as dist
 from diff_params.edm_LDM import EDM_LDM
 
 
+
+
 class EDM_Style(EDM_LDM):
     """
         This implements the time-frequency domain diffusion
@@ -27,7 +29,12 @@ class EDM_Style(EDM_LDM):
         **kwargs
         ):
 
+        print("Initializing EDM_Style with args:", args, kwargs)
         super().__init__(*args, **kwargs) 
+
+        device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 
         if FXenc_args.type=="AFxRep":
 
@@ -101,13 +108,13 @@ class EDM_Style(EDM_LDM):
             self.FXenc=fxencode_fn
             self.FXenc_compiled=torch.compile(fxencode_fn)
             self.FXenc_reshape=reshape_fn
-
+        elif FXenc_args.type=="fx_encoder_++":
+            raise NotImplementedError("fx_encoder_++ is not implemented yet")
         else:
             raise NotImplementedError("Only AFxRep is implemented for now")
 
 
-
-    def loss_fn(self, net, sample=None, context=None, *args, **kwargs):
+    def loss_fn(self, net,  sample=None, context=None, clusters=None,*args, **kwargs):
         """
         Loss function, which is the mean squared error between the denoised latent and the clean latent
         Args:
@@ -120,22 +127,20 @@ class EDM_Style(EDM_LDM):
 
         t = self.sample_time_training(y.shape[0]).to(y.device)
 
-
-
         with torch.no_grad():
-            y=self.style_encode(y, compile=True)
+            y_style=self.style_encode(y, compile=True)
 
             if context is not None:
-                context=self.transform_forward(context, compile=True, is_condition=True)
+                z, x=self.transform_forward(context, compile=True, is_condition=True, clusters=clusters)
                 if self.cfg_dropout_prob > 0.0:
                     #context=self.transform_forward(context)
-                    null_embed = torch.zeros_like(context, device=context.device)
+                    null_embed = torch.zeros_like(z, device=z.device)
                     #dropout context with probability cfg_dropout_prob
-                    mask = torch.rand(context.shape[0], device=context.device) < self.cfg_dropout_prob
-                    context = torch.where(mask.view(-1,1,1), null_embed, context)
+                    mask = torch.rand(z.shape[0], device=z.device) < self.cfg_dropout_prob
+                    z = torch.where(mask.view(-1,1,1), null_embed, z)
     
 
-        input, target, cnoise = self.prepare_train_preconditioning(y, t )
+        input, target, cnoise = self.prepare_train_preconditioning(y_style, t )
 
 
         if len(cnoise.shape)==1:
@@ -143,9 +148,10 @@ class EDM_Style(EDM_LDM):
         if input.ndim==2:
             input=input.unsqueeze(1)
 
-        context=einops.rearrange(context, "b c t -> b t c") if context is not None else None
+        z=einops.rearrange(z, "b c t -> b t c") if z is not None else None
 
-        estimate = net(input, cnoise, cross_attn_cond=context)
+        print("input shape", input.shape, "cnoise shape", cnoise.shape, "z shape", z.shape)
+        estimate = net(input, cnoise, cross_attn_cond=z)
         
         if target.ndim==2 and estimate.ndim==3:
             estimate=estimate.squeeze(1)
@@ -153,7 +159,7 @@ class EDM_Style(EDM_LDM):
         error=torch.square(torch.abs(estimate-target))
 
 
-        return error, self._std(t)
+        return error, self._std(t), x, y
 
 
 
@@ -185,7 +191,7 @@ class EDM_Style(EDM_LDM):
 
         cond=einops.rearrange(cond, "b c t -> b t c") if cond is not None else None
 
-        if cfg_scale != 1.0:
+        if cfg_scale == 1.0:
             net_out=net(x_in, cnoise.to(torch.float32), cross_attn_cond=cond)  #this will crash because of broadcasting problems, debug later!
         else:
             null_embed = self.get_null_embed(cond)
@@ -218,7 +224,7 @@ class EDM_Style(EDM_LDM):
         else:
             x=self.FXenc(x)
         
-        print("x shape after FXenc", x.shape)
+        #print("x shape after FXenc", x.shape)
 
         #assert x.ndim==2
 
@@ -238,3 +244,25 @@ class EDM_Style(EDM_LDM):
     def denormalize(self, x):
         return x
  
+    def transform_forward(self, x, y=None, compile=False, is_condition=False, is_test=False, clusters=None):
+        #TODO: Apply forward transform here
+        #fake stereo
+
+        if is_condition:
+            x=self.preprocessor(x, is_test=is_test)
+        if compile:
+            with torch.no_grad():
+                if self.AE_type=="oracle":
+                    z=self.AE_encode_compiled(x, clusters)
+                else:
+                    z=self.AE_encode_compiled(x)
+        else:
+            with torch.no_grad():
+                if self.AE_type=="oracle":
+                    z=self.AE_encode(x, clusters)
+                else:
+                    z=self.AE_encode(x)
+
+        z=einops.rearrange(z, "b t c -> b c t")
+
+        return z, x

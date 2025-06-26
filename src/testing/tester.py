@@ -262,7 +262,7 @@ class Tester():
                 #with torch.no_grad():
                 #    p_target=self.sampler.diff_params.transform_forward(sample_y,is_condition=False, is_test=True)
     
-                preds=self.sample_conditional(mode, sample_x, B=B)
+                preds=self.sample_conditional_style(mode, sample_x, B=B)
 
                 for b in range(B):
 
@@ -391,16 +391,16 @@ class Tester():
                         continue
                         
 
-    def sample_conditional_style(self, mode, cond):
+    def sample_conditional_style(self, mode,  cond, B=1):
         # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
         audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
         #shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
         shape=self.sampler.diff_params.default_shape
         shape= [B, *shape[1:]]  # B is the batch size, we want to sample B samples
 
-        cond=self.sampler.diff_params.transform_forward(cond)
-        
-        preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device)
+        with torch.no_grad():
+            cond=self.sampler.diff_params.transform_forward(cond,  is_condition=True, is_test=True)
+            preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device)
 
         return preds
 

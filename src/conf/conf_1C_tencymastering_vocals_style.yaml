@@ -1,6 +1,6 @@
 
 defaults:
-  - dset: tencymastering_vocals_preprocessed_server5
+  - dset: tencymastering_vocals_preprocessed_wtrain_server5
   - network: Latent_DiT_M2L4_crossatt
   - diff_params: edm_style_AFxRep_M2L4_noisycontext 
   - tester: evaluate_style_conditional_dry_vocals_LDM_M2L4
@@ -18,6 +18,7 @@ dset:
     segment_length: 525312  # Replace with your desired value
   validation:
     segment_length: 525312  # If you want to change validation segment length too
+    num_examples: 512
 
 exp:
   exp_name: "1C_tencymastering_vocals" #name of the experiment
@@ -29,7 +30,7 @@ exp:
   #related to optimization
   optimizer:
     _target_: "torch.optim.AdamW"
-    lr: 1e-4 #            help='Learning rate',
+    lr: 5e-5 #            help='Learning rate',
     betas: [0.9, 0.999]
     eps: 1e-8 #for numerical stability, we may need to modify it if usinf fp16
     weight_decay: 0.01 #weight decay for the optimizer
@@ -43,7 +44,7 @@ exp:
 
   batch_size: 16
 
-  val_batch_size: 20
+  val_batch_size: 16
 
   # Performance-related.
   num_workers: 8

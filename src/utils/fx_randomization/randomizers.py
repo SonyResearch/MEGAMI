@@ -6,6 +6,8 @@ import grafx
 from utils.fx_randomization.processors.STFT_diffused_reverb import STFTMaskedNoiseReverb_filterbank
 from grafx.processors import Compressor
 
+import utils.training_utils as utils
+from utils.distributions import Normal
 
 class ReverbRandomizer:
     """
@@ -485,3 +487,52 @@ class CompExpRandomizer:
 
 
 
+
+class FxNormAug:
+
+    def __init__(self,
+                SNR_mean=-2,  # Mean SNR in dB
+                SNR_std=10,  # Standard deviation of SNR in dB
+                ):
+
+        self.SNR_dist=Normal(mean=SNR_mean, std=SNR_std)  # SNR in dB
+        self.RMS_dist=Normal(mean=-25, std=5)  # RMS in dB
+
+    def apply_RMS_randomization(self, x, is_test=False):
+
+        RMS=self.RMS_dist.sample(x.shape[0]).view(-1, 1, 1)  # Ensure RMS is broadcastable
+
+
+        x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
+
+        gain= RMS - x_RMS
+        gain_linear = 10 ** (gain / 20)
+        #print("gain_linear", gain_linear.shape, gain_linear.device, x.shape, x.device)
+        x=x* gain_linear.view(-1, 1, 1)
+
+        return x
+    
+    def add_noise(self,x):
+        SNR=self.SNR_dist.sample(x.shape[0])
+        x= utils.add_pink_noise(x, SNR)
+        return x
+        
+    def forward(self, x):
+
+        #First EQ normalize
+
+        #then apply random EQ
+
+        #then apply random compressor
+
+        #then apply random reverbo
+
+        #then add noise
+
+        x = self.add_noise(x)
+
+        #then apply random gain
+
+        x = self.apply_RMS_randomization(x)
+
+        return x
