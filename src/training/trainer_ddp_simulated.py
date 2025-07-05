@@ -521,7 +521,7 @@ class Trainer():
             #    print("Error during training step:", e)
             #    print("Skipping this step")
             #    # If an error occurs, we skip the step and continue training
-            #    # This is useful for debugging, but in production you might want to handle this differently
+                # This is useful for debugging, but in production you might want to handle this differently
             #    continue
 
             if self.rank == 0:

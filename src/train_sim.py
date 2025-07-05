@@ -43,14 +43,14 @@ def _main(args):
                                                   pin_memory=True, worker_init_fn=worker_init_fn)
     val_set_dict[args.dset.validation.mode] = val_loader
 
-    try:
-        val_set_2 = hydra.utils.instantiate(args.dset.validation_2)
-        val_loader_2 = torch.utils.data.DataLoader(dataset=val_set_2, batch_size=args.exp.val_batch_size, num_workers=args.exp.num_workers,
+    #try:
+    val_set_2 = hydra.utils.instantiate(args.dset.validation_2)
+    val_loader_2 = torch.utils.data.DataLoader(dataset=val_set_2, batch_size=args.exp.val_batch_size, num_workers=args.exp.num_workers,
                                                   pin_memory=True, worker_init_fn=worker_init_fn)
-        val_set_dict[args.dset.validation_2.mode] = val_loader_2
-    except:
-        print("Second validation set not found, using only first one")
-        pass
+    val_set_dict[args.dset.validation_2.mode] = val_loader_2
+    #except:
+    #    print("Second validation set not found, using only first one")
+    #    pass
 
     try:
         val_set_3 = hydra.utils.instantiate(args.dset.validation_3)

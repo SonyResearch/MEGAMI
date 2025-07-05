@@ -205,7 +205,7 @@ class DistMetric:
             self.model_args= kwargs.get("CLAP_args", None)
             assert self.model_args is not None, "model_args must be provided for CLAP type"
 
-            self.feat_extractor = load_CLAP(self.model_args, self.device)
+            self.feat_extractor = load_CLAP(self.model_args, self.device, type=None)
 
 
         else:
@@ -234,6 +234,74 @@ class DistMetric:
 
         return feat_y, feat_y_hat, feat_x
 
+
+    def do_TSNE_figure(self, dict_features_y, dict_features_y_hat, dict_features_x=None, fit_mode="target", dict_cluster=None):
+        """
+        Perform PCA on the features and create a figure.
+        
+        Args:
+            dict_features_y (dict): Dictionary containing features for the first set.
+            dict_features_y_hat (dict): Dictionary containing features for the second set.
+            
+        Returns:
+            fig: The created figure.
+        """
+        import matplotlib.pyplot as plt
+        from sklearn.decomposition import PCA
+        from sklearn.manifold import TSNE   
+
+        y_values = list(dict_features_y.values())
+        y_values = torch.cat(y_values, dim=0)
+
+        y_hat_values = list(dict_features_y_hat.values())
+        y_hat_values = torch.cat(y_hat_values, dim=0)
+
+
+        if dict_cluster is not None:
+            clusters= list(dict_cluster.values())
+            clusters = [c.unsqueeze(0) if c.dim() == 0 else c for c in clusters]
+            clusters = torch.cat(clusters, dim=0)
+
+            #check different clusters (0,1,2,3...)
+            assert len(torch.unique(clusters)) == 2, "Only two clusters are supported for PCA visualization"
+            C0= clusters == 0
+            C1= clusters == 1
+
+        #manage Nans in y_values
+        y_values=torch.nan_to_num(y_values, nan=0)
+        y_hat_values=torch.nan_to_num(y_hat_values, nan=0)
+
+        #if self.pca is None:
+        self.tsne =TSNE(n_components=2, perplexity=30)
+
+        combined_data = torch.cat([y_values, y_hat_values], dim=0).cpu().numpy()
+        combined_result = self.tsne.fit_transform(combined_data)
+        
+        # Split the results back
+        n_y = y_values.shape[0]
+        tsne_result = combined_result[:n_y]
+        tsne_result_hat = combined_result[n_y:]
+
+
+        if dict_cluster is not None:
+           data_dict = {
+               "y_C0": tsne_result[C0],
+               "y_hat_C0": tsne_result_hat[C0],
+               "y_C1": tsne_result[C1],
+               "y_hat_C1": tsne_result_hat[C1]
+           }
+        else:
+           data_dict = {
+               "y": tsne_result,
+               "y_hat": tsne_result_hat
+           }
+
+
+
+        fig= make_PCA_figure(data_dict, title=self.type + " TSNE")
+
+
+        return fig
 
 
     def do_PCA_figure(self, dict_features_y, dict_features_y_hat, dict_features_x=None, fit_mode="target", dict_cluster=None):
@@ -505,9 +573,14 @@ class KADFeatures(DistMetric):
             
         dict_output = {}
         if self.KAD_args.do_PCA_figure:
-            fig=self.do_PCA_figure(dict_features_y, dict_features_y_hat, fit_mode="target", dict_cluster=dict_cluster)
+            fig=self.do_PCA_figure(dict_features_y, dict_features_y_hat, fit_mode=self.KAD_args.PCA_fit_mode, dict_cluster=dict_cluster)
             key= self.type+ "_PCA_figure"
             dict_output = {key: fig}
+        
+        if self.KAD_args.do_TSNE_figure:
+            fig=self.do_TSNE_figure(dict_features_y, dict_features_y_hat, fit_mode="all", dict_cluster=dict_cluster)
+            key= self.type+ "_TSNE_figure"
+            dict_output[key] = fig
         
 
         # Compute mean features
@@ -821,10 +894,16 @@ class FADFeatures(DistMetric):
                 dict_features_y_hat[key] = feat_y_hat
                 #dict_features_x[key] = feat_x
             
+        dict_output = {}
         if self.FAD_args.do_PCA_figure:
             fig=self.do_PCA_figure(dict_features_y, dict_features_y_hat, fit_mode="target")
             key= self.type+ "_PCA_figure"
-            dict_output = {key: fig}
+            dict_output[key] = fig
+
+        if self.FAD_args.do_TSNE_figure:
+            fig=self.do_TSNE_figure(dict_features_y, dict_features_y_hat, fit_mode="target")
+            key= self.type+ "_TSNE_figure"
+            dict_output[key] = fig
 
         # Compute mean features
 

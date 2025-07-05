@@ -849,7 +849,11 @@ def make_PCA_figure(data_dict, num_bins=20, title="PCA"):
     markers= ["o", "x", "D", "^", "v", "x", "p", "*", "h", "+", "s"]
     colors=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
 
+    print("data dict", data_dict)
+
     for i,(k, v) in enumerate(data_dict.items()):
+        if v is None or len(v) == 0:
+            continue  # Skip empty or None values
 
         # the scatter plot:
         ax.scatter(
@@ -863,8 +867,14 @@ def make_PCA_figure(data_dict, num_bins=20, title="PCA"):
             alpha=0.7,
         )
 
-        xymax=max(xymax, np.max(v[:, :2]))
-        xymin=min(xymin, np.min(v[:, :2]))
+        try:
+            xymax=max(xymax, np.max(v[:, :2]))
+            xymin=min(xymin, np.min(v[:, :2]))
+        except Exception as e:
+            print(f"Error processing data for {k}: {e}")
+            print("data:",v)
+            print(f"Data shape: {v.shape}")
+            continue
 
     ax.legend(loc="upper left")
     ax.set_xlabel("PC 1")

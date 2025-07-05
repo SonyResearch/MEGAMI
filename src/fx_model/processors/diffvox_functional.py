@@ -80,6 +80,7 @@ def biquad_parallel(x: torch.Tensor, b0, b1, b2, a0, a1, a2):
         # TODO: parallelize this part
 
         for i in indexes:
+            #print("Processing index:", i)
             a1_i= a1[i].view(-1)
             a2_i= a2[i].view(-1)
             beta1_i = beta1[i].view(-1)
@@ -338,8 +339,19 @@ def compressor_expander(
     #print("avg_coef",avg_coef)
     #print("is there a nan in x?", torch.isnan(x).any())
     rms = avg_rms(x, avg_coef=avg_coef)
-    #if rms < 0:
-    #    raise ValueError("RMS value is negative, which is not expected.")
+    if (rms < 0).any():
+        print("nan in x:", torch.isnan(x).any())
+        print("avg_coef", avg_coef)
+        print("nan in rms:", torch.isnan(rms).any())
+        raise ValueError("RMS value is negative, which is not expected.")
+    
+    try:
+        assert torch.all(rms > 0)
+    except AssertionError:
+        print("RMS values:", rms)
+        print("nan in rms",torch.isnan(rms).any())
+        raise
+
     gain = compexp_gain(rms, cmp_th, cmp_ratio, exp_th, exp_ratio, at, rt)
     gain = lookahead_func(gain)
     return x * gain * db2amp(make_up).broadcast_to(x.shape[0], 1)

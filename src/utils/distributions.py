@@ -48,8 +48,8 @@ class LogUniform(Distribution):
 
     def __init__(self, low, high, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.low = low
-        self.high = high
+        self.low = torch.tensor(low)
+        self.high = torch.tensor(high)
 
     def sample(self, n_samples: int):
         """
@@ -118,9 +118,9 @@ class NormalRamp(Distribution):
 
         else:
             arange = torch.arange(self.shape[0], dtype=torch.float32)
-            log_factor = torch.log10(torch.tensor(mean_high / mean_low))
+            log_factor = torch.log10(torch.tensor(mean_high / (mean_low + 1e-4)))  # Adding a small value to avoid log(0)
             self.mean = mean_low * torch.pow(10, (arange * log_factor) / (self.shape[0] - 1))
-            log_factor = torch.log10(torch.tensor(std_high / std_low))
+            log_factor = torch.log10(torch.tensor(std_high /( std_low + 1e-4)))  # Adding a small value to avoid log(0)
             self.std = std_low * torch.pow(10, (arange * log_factor) / (self.shape[0] - 1))
 
         self.mean = self.mean.view(-1, *((1,) * (len(self.shape) - 1)))

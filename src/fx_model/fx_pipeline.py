@@ -199,6 +199,7 @@ class EffectRandomizer:
         x: shape (batch_size, num_channels, num_samples)
         """
         #x= x * self.pre_gain
+        a=time.time()
 
         B= x.size(0)
 
@@ -207,14 +208,20 @@ class EffectRandomizer:
             x= x.mean(dim=1, keepdim=True)  # Average the two channels to create a mono signal
 
         params_PEQ = sample_from_distribution_dict(self.distributions_PEQ, B, device=self.device)
+        #print("Time to sample PEQ parameters:", time.time() - a)
         x= peq_functional(x, **params_PEQ, **self.params_PEQ_non_optimizable)
+        #print("Time to apply PEQ:", time.time() - a)
 
         params_CompExp = sample_from_distribution_dict(self.distributions_CompExp, B, device=self.device)
+        #print("Time to sample CompExp parameters:", time.time() - a)
         x= compexp_functional(x, **params_CompExp, **self.params_CompExp_non_optimizable)
+        #print("Time to apply CompExp:", time.time() - a)
 
         params_FDN= sample_from_distribution_dict(self.distributions_FDN, B, device=self.device)
+        #print("Time to sample FDN parameters:", time.time() - a)
         
         params_PEQ_FDN = sample_from_distribution_dict(self.distributions_PEQ_FDN, B, device=self.device)
+        #print("Time to sample PEQ_FDN parameters:", time.time() - a)    
         
         def eq_fn(h):
             B, C1, C2, T = h.shape
@@ -225,18 +232,23 @@ class EffectRandomizer:
         x_to_fdn=x.repeat(1,2,1)
         x_fdn=fdn_functional(x_to_fdn, **params_FDN, **self.params_FDN_non_optimizable, eq=eq_fn)
 
+        #print("Time to apply FDN:", time.time() - a)
 
         params_pan = sample_from_distribution_dict(self.distributions_pan, B, device=self.device)
+        #print("Time to sample pan parameters:", time.time() - a)
         pan_param= params_pan["pan_param"]
         x_pan=panning( x, pan_param)
+        #print("Time to apply panning:", time.time() - a)
 
         #x=x_pan
         x = x_fdn + x_pan  # Add the panned signal to the original signal
 
         RMS_norm = sample_from_distribution_dict(self.distributions_RMS_norm, B, device=self.device)
+        #print("Time to sample RMS normalization parameters:", time.time() - a)
 
 
         x = self.apply_RMS_normalization(x, RMS=RMS_norm["RMSnorm"])
         
+        #print("Time to apply RMS normalization:", time.time() - a)
 
         return x

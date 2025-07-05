@@ -25,6 +25,7 @@ class EDM_Style(EDM_LDM):
     def __init__(self,
         FXenc_args,
         sample_rate,
+        context_signal="dry",
         *args,
         **kwargs
         ):
@@ -34,67 +35,21 @@ class EDM_Style(EDM_LDM):
 
         device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-
         if FXenc_args.type=="AFxRep":
 
-            ckpt_path=FXenc_args.ckpt_path
-            config_path = os.path.join(os.path.dirname(ckpt_path), "config.yaml")
+            AFxRep_args= kwargs.get("AFxRep_args", None)
+            from evaluation.feature_extractors import load_AFxRep
+            AFxRep_encoder= load_AFxRep(AFxRep_args, device=self.device)
         
-            with open(config_path) as f:
-                config = yaml.safe_load(f)
-        
-            encoder_configs = config["model"]["init_args"]["encoder"]
-        
-            module_path, class_name = encoder_configs["class_path"].rsplit(".", 1)
-            module_path = module_path.replace("lcap", "utils.st_ito")
-
-            print("module path", module_path, "class name", class_name)
-            module = import_module(module_path)
-
-            model = getattr(module, class_name)(**encoder_configs["init_args"])
-        
-            checkpoint = torch.load(ckpt_path, map_location="cpu")
-        
-            # load state dicts
-            state_dict = {}
-            for k, v in checkpoint["state_dict"].items():
-                if k.startswith("encoder"):
-                    state_dict[k.replace("encoder.", "", 1)] = v
-        
-            model.load_state_dict(state_dict)
-            model.eval()
-        
-            model.to(self.device)
-
 
             def fxencode_fn(x):
-                if sample_rate != 48000:
-                    x=torchaudio.functional.resample(x, sample_rate, 48000)
 
-                bs= x.shape[0]
-                #peak normalization. I do it because this is what ST-ITO get_param_embeds does. Not sure if it is good that this representation is invariant to gain
-                for batch_idx in range(bs):
-                    x[batch_idx, ...] /= x[batch_idx, ...].abs().max().clamp(1e-8)
+                z=AFxRep_encoder(x)
 
-                mid_embeddings, side_embeddings = model(x)
+                z=z.view(z.shape[0], 64, -1)
 
-                # check for nan
-                if torch.isnan(mid_embeddings).any():
-                    print("Warning: NaNs found in mid_embeddings")
-                    mid_embeddings = torch.nan_to_num(mid_embeddings)
-                elif torch.isnan(side_embeddings).any():
-                    print("Warning: NaNs found in side_embeddings")
-                    side_embeddings = torch.nan_to_num(side_embeddings)
+                return z
 
-                mid_embeddings = torch.nn.functional.normalize(mid_embeddings, p=2, dim=-1)
-                side_embeddings = torch.nn.functional.normalize(side_embeddings, p=2, dim=-1)
-
-                embed=torch.cat([mid_embeddings, side_embeddings], dim=-1)
-
-                embed=embed.view(embed.shape[0], 64, -1)
-
-                return embed
             
             def reshape_fn(embed):
 
@@ -108,6 +63,8 @@ class EDM_Style(EDM_LDM):
             self.FXenc=fxencode_fn
             self.FXenc_compiled=torch.compile(fxencode_fn)
             self.FXenc_reshape=reshape_fn
+
+
         elif FXenc_args.type=="fx_encoder_++":
             raise NotImplementedError("fx_encoder_++ is not implemented yet")
         else:

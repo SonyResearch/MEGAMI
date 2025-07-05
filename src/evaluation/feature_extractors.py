@@ -4,8 +4,9 @@ import torchaudio
 from importlib import import_module
 import torch
 import yaml
+import torch.nn.functional as F
 
-def load_fx_encoder_plusplus(model_args, device):
+def load_fx_encoder_plusplus(model_args, device, *args, **kwargs):
     from utils.feature_extractors.fx_encoder_plus_plus import load_model 
 
     assert model_args is not None, "model_args must be provided for fx_encoder type"
@@ -30,7 +31,7 @@ def load_fx_encoder_plusplus(model_args, device):
 
     return lambda x: effects_encoder_fn(x)
 
-def load_CLAP(model_args, device):
+def load_CLAP(model_args, device, *args, **kwargs):
 
     #original_path = sys.path.copy()
     from utils.laion_clap.hook import CLAP_Module
@@ -43,7 +44,26 @@ def load_CLAP(model_args, device):
 
     normalize = model_args.normalize
 
-    def clap_fn(x):
+    if model_args.use_adaptor:
+        if model_args.adaptor_type == "MLP_CLAP_regressor":
+            from networks.MLP_CLAP_regressor import MLP_CLAP_regressor
+            adaptor=MLP_CLAP_regressor()
+            ckpt=torch.load(model_args.adaptor_checkpoint, map_location=device, weights_only=False)
+            adaptor.load_state_dict(ckpt["network"], strict=True)
+            adaptor.to(device)
+
+        
+    def add_isotropic_noise(z, sigma=0.1):
+        """
+        z: [..., D] normalized embeddings (e.g., from CLAP or a regressor)
+        sigma: scale of noise to inject
+        Returns: z with orthogonal Gaussian noise added
+        """
+        n=torch.randn_like(z)  # isotropic noise
+        z_noisy = F.normalize(z + sigma * n, dim=-1)
+        return z_noisy
+
+    def clap_fn(x, type=None):
         B, C, T = x.shape
         if C > 1:
             x= x.mean(dim=1, keepdim=True)  # Convert to mono if stereo
@@ -53,16 +73,26 @@ def load_CLAP(model_args, device):
             x= x.squeeze(1)  # Remove channel dimension for CLAP
             emb=model.get_audio_embedding_from_data(x,use_tensor=True)
 
+            if type is not None:
+                if type == "wet":
+                    #print("wet mode")
+                    if model_args.use_adaptor:
+                        emb= adaptor(emb)  # Apply the adaptor if specified
+    
+            if model_args.add_noise:
+                emb= torch.nn.functional.normalize(emb, p=2, dim=-1)  # Normalize before adding noise
+                emb = add_isotropic_noise(emb, sigma=model_args.noise_sigma)
+
             # Normalize the embeddings
             if normalize:
                 emb = torch.nn.functional.normalize(emb, p=2, dim=-1)
 
             return emb
 
-    return lambda x: clap_fn(x)
+    return lambda x, type: clap_fn(x, type=type)
 
 
-def load_MERT(model_args, device):
+def load_MERT(model_args, device, *args, **kwargs):
 
     from transformers import Wav2Vec2FeatureExtractor
     from transformers import AutoModel
@@ -107,11 +137,11 @@ def load_MERT(model_args, device):
                 layer_hidden_states = torch.nn.functional.normalize(layer_hidden_states, p=2, dim=-1)
             return layer_hidden_states
             
-    return lambda x: mert_fn(x)         
+    return lambda x, *args: mert_fn(x)         
             
              
              
-def load_fx_encoder(model_args, device):
+def load_fx_encoder(model_args, device, *args, **kwargs):
     """
     Load the FX Encoder model.
     
@@ -161,9 +191,9 @@ def load_fx_encoder(model_args, device):
         return emb
         
 
-    return lambda x: effects_encoder_fn(x)
+    return lambda x, *args: effects_encoder_fn(x)
 
-def load_AFxRep(model_args, device, sample_rate=44100, peak_scaling=True):
+def load_AFxRep(model_args, device, sample_rate=44100, peak_scaling=True, *args, **kwargs):
 
     assert model_args is not None, "model_args must be provided for AFxRep type"
 
@@ -238,7 +268,7 @@ def load_AFxRep(model_args, device, sample_rate=44100, peak_scaling=True):
 
         return embeddings_all
 
-    feat_extractor = lambda x: wrapper_fn(x, sample_rate=sample_rate)
+    feat_extractor = lambda x, *args: wrapper_fn(x, sample_rate=sample_rate)
 
     return feat_extractor
 

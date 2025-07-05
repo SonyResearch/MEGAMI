@@ -43,3 +43,31 @@ def get_audio_length(file_path):
         duration = total_frames / samplerate  # Duration in seconds
 
     return duration, total_frames, samplerate
+
+def taxonomy2track(input_class, num_instr=8):
+
+    assert num_instr==8, "num_instr should be 8 for this function, the rest is not implemented yet"
+
+    if input_class is None:
+        return 'unknown'  
+    if num_instr == 8:
+        mapping = {0000: 'other', 1100: 'drums', 1200: 'drums', 1300: 'other', 2000: 'bass', 3000: 'guitar', 4100: 'piano', 4200: 'piano', 4300: 'piano', 4400: 'other', 4500: 'other', 4600: 'other', 4700: 'other', 4900: 'other', 5000: 'brass', 6100: 'strings', 6210: 'brass', 6220: 'brass', 8100: 'guitar', 8200: 'brass', 9000: 'vocals'}
+    else:
+        raise NotImplementedError()
+    
+    code_length = len(str(input_class))
+    if code_length < 4:
+        #pad zeros to the right to make it 4 digits
+        input_class = int(str(input_class) + "0" * (4 - code_length))
+ 
+    class_str = str(input_class)
+    for i in range(len(class_str), 0, -1):
+        general_class = int(class_str[:i] + "0" * (len(class_str) - i))
+        if general_class in mapping:
+            return mapping[general_class]  
+       
+    try:
+        raise ValueError(f"No mapping found for input class {input_class} with num_instr {num_instr}")
+    except ValueError as e:
+        print(f"Error: {e}")
+        return "other"  # Return a default value if no mapping is found

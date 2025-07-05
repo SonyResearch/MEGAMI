@@ -42,6 +42,7 @@ class EDM_LDM(SDE):
         self.fxnormaug_train = fxnormaug_train
         self.fxnormaug_inference = fxnormaug_inference
 
+
         try:
             self.max_t= self.sde_hp.max_sigma
         except Exception as e:
@@ -224,17 +225,17 @@ class EDM_LDM(SDE):
 
             # Save original path
             original_path = sys.path.copy()
-            print("path", sys.path)
    
             from evaluation.feature_extractors import load_CLAP
             CLAP_encoder= load_CLAP(CLAP_args, device=self.device)
 
             sys.path = original_path
-            print("path", sys.path)
 
-            def encode_fn(x, *args):
+            def encode_fn(x, *args, **kwargs):
                 x=x.to(self.device)
-                z=CLAP_encoder(x) #shape (B, C)
+
+                type= kwargs.get("type", None)
+                z=CLAP_encoder(x, type) #shape (B, C)
 
                 z=z.view(z.shape[0], 64, -1) #shape (B, 64, N)
 

@@ -20,7 +20,7 @@ class FxNormAug:
                 sample_rate=44100,  # Sample rate of the audio
                 device="cuda" if torch.cuda.is_available() else "cpu",
                 mode="train",  # Mode can be "train" or "eval"
-                seed=42
+                seed=42,
                 ):
 
         torch.random.manual_seed(seed)
@@ -77,13 +77,14 @@ class FxNormAug:
 
 
         self.reverberator= STFTMaskedNoiseReverb_filterbank(fixed_noise=False, ir_len=88000)
-        self.distribution_init_log_magnitude=Normal(mean=0, std=2, shape=(self.reverberator.filterbank.num_filters,))  # Range for log magnitude randomization
 
-        #min_T60=0.25  # Minimum reverberation time in seconds
-        #max_T60=1.25  # Maximum reverberation time in seconds
-        self.distribution_delta_log_magnitude = NormalRamp(mean_low=1.5, mean_high=0.2, std_low=0.5, std_high=0.1, log=False, shape=(self.reverberator.filterbank.num_filters,), transformation=lambda x: T602logmag(x.clamp(min=0.01), sample_rate=self.sample_rate, hop_length=self.reverberator.hop_length))  # Range for delta log magnitude randomization
+        self.distribution_init_log_magnitude_1=Normal(mean=0, std=2, shape=(self.reverberator.filterbank.num_filters,))  # Range for log magnitude randomization
+        self.distribution_delta_log_magnitude_1 = NormalRamp(mean_low=0.8, mean_high=0.1, std_low=0.5, std_high=0.1, log=False, shape=(self.reverberator.filterbank.num_filters,), transformation=lambda x: T602logmag(x.clamp(min=0.01), sample_rate=self.sample_rate, hop_length=self.reverberator.hop_length))  # Range for delta log magnitude randomization
+        self.distribution_drywet_ratio_1= Normal(mean=0.3, std=0.1, shape=(1,), transformation=lambda x: torch.clamp(x, min=0, max=1))  # Dry/wet ratio for reverb
 
-        self.distribution_drywet_ratio= Normal(mean=0.1, std=0.02, shape=(1,), transformation=lambda x: torch.clamp(x, min=0, max=1))  # Dry/wet ratio for reverb
+        self.distribution_init_log_magnitude_2=Normal(mean=0, std=2, shape=(self.reverberator.filterbank.num_filters,))  # Range for log magnitude randomization
+        self.distribution_delta_log_magnitude_2 = NormalRamp(mean_low=1.5, mean_high=0.2, std_low=0.5, std_high=0.1, log=False, shape=(self.reverberator.filterbank.num_filters,), transformation=lambda x: T602logmag(x.clamp(min=0.01), sample_rate=self.sample_rate, hop_length=self.reverberator.hop_length))  # Range for delta log magnitude randomization
+        self.distribution_drywet_ratio_2= Normal(mean=0.1, std=0.02, shape=(1,), transformation=lambda x: torch.clamp(x, min=0, max=1))  # Dry/wet ratio for reverb
 
         _, self.params_CompExp_non_optimizable, _ = prepare_compexp_parameters(self.sample_rate, device=self.device)
 
@@ -151,10 +152,10 @@ class FxNormAug:
         x= utils.add_pink_noise(x, SNR)
         return x
         
-    def apply_reverb(self,x):
-        log_magnitude = self.distribution_init_log_magnitude.sample(x.shape[0]).to(x.device).unsqueeze(1)  # Sample log magnitude for each filterbank channel
-        delta_log_magnitude = self.distribution_delta_log_magnitude.sample(x.shape[0]).to(x.device).unsqueeze(1)
-        drywet_ratio = self.distribution_drywet_ratio.sample(x.shape[0]).to(x.device)
+    def apply_reverb_1(self,x):
+        log_magnitude = self.distribution_init_log_magnitude_1.sample(x.shape[0]).to(x.device).unsqueeze(1)  # Sample log magnitude for each filterbank channel
+        delta_log_magnitude = self.distribution_delta_log_magnitude_1.sample(x.shape[0]).to(x.device).unsqueeze(1)
+        drywet_ratio = self.distribution_drywet_ratio_1.sample(x.shape[0]).to(x.device)
 
         self.reverberator.to(x.device)  # Ensure reverberator is on the same device as x
         y=self.reverberator(x, log_magnitude, delta_log_magnitude)
@@ -235,9 +236,9 @@ class FxNormAug:
         x=self.EQ_normalize(x)
 
         #then apply random compressor
-        x= self.apply_RMS_normalization(x, random=False)
+        #x= self.apply_RMS_normalization(x, random=False)
 
-        x = self.apply_compexp(x, fixed=True)
+        #x = self.apply_compexp(x, fixed=True)
 
 
 
@@ -253,7 +254,7 @@ class FxNormAug:
 
         #then apply random gain
 
-        x = self.apply_RMS_normalization(x, random=True)
+        x = self.apply_RMS_normalization(x, random=False)
 
 
         return x
