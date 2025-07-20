@@ -32,11 +32,16 @@ MASTER_PORT=29500
 #  exp.optimizer.lr=1e-4 \
 #  exp.batch_size=4 \
 
-python train_sim_multitrack.py --config-name=$conf  \
+python train_paired_multitrack.py --config-name=$conf  \
   model_dir=$PATH_EXPERIMENT \
-  exp.resume=False \
-  exp.compile=True \
+  exp.resume=True \
+  exp.compile=False \
+  exp.batch_size=8 \
+  exp.num_workers=16 \
+  exp.max_tracks=14 \
+  dset.validation.num_tracks=2 \
+  dset.validation_2.num_tracks=2 \
   logging=base_logging_1C \
-  logging.log=True \
+  logging.log=False \
 
   #dset=tencymastering_vocals_server5 \

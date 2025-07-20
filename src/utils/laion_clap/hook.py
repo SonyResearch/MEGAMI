@@ -111,12 +111,12 @@ class CLAP_Module(torch.nn.Module):
                 print('Downloading laion_clap weight files...')
                 ckpt = wget.download(download_link + weight_file_name, os.path.dirname(ckpt))
                 print('Download completed!')
-        print('Load Checkpoint...')
+        #print('Load Checkpoint...')
         ckpt = load_state_dict(ckpt, skip_params=True)
         self.model.load_state_dict(ckpt)
-        param_names = [n for n, p in self.model.named_parameters()]
-        for n in param_names:
-            print(n, "\t", "Loaded" if n in ckpt else "Unloaded")
+        #param_names = [n for n, p in self.model.named_parameters()]
+        #for n in param_names:
+        #    print(n, "\t", "Loaded" if n in ckpt else "Unloaded")
     
     def get_audio_embedding_from_filelist(self, x, use_tensor=False):
         """get audio embeddings from the audio file list

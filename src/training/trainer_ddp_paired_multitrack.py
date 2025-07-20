@@ -445,19 +445,17 @@ class Trainer():
                 if self.args.logging.log:
                     self.process_loss_for_logging(error, sigma)
 
-                    if self.args.logging.num_train_samples_to_log > 0 and self.logged_audio_examples < self.args.logging.num_train_samples_to_log:
-                        # Log audio samples
-                        taxonomy_0=taxonomy[0]
-                        for i, t in enumerate(taxonomy_0):
-                            if t is None:
-                                continue
-                            track=self.taxonomy_ref_inverse[t]
-                            self.log_audio(y[0][i].unsqueeze(0), "train_wet"+track )
-                            self.log_audio(x[0][i].unsqueeze(0), "train_dry"+track )
-                            if x_norm.std() != x.std():
-                                self.log_audio(x_norm[0][i].unsqueeze(0), "train_fxnorm"+track )
-
-                        self.logged_audio_examples += 1
+                    #if self.args.logging.num_train_samples_to_log > 0 and self.logged_audio_examples < self.args.logging.num_train_samples_to_log:
+                    #    # Log audio samples
+                    #    taxonomy_0=taxonomy[0]
+                    #    for i, t in enumerate(taxonomy_0):
+                    #        if t is None:
+                    #            continue
+                    #        self.log_audio(y[0][i].unsqueeze(0), "train_wet"+t )
+                    #        self.log_audio(x[0][i].unsqueeze(0), "train_dry"+t )
+                    #        if x_norm.std() != x.std():
+                    #            self.log_audio(x_norm[0][i].unsqueeze(0), "train_fxnorm"+track )
+                    #    self.logged_audio_examples += 1
                     
         else:
             print("loss is NaN, skipping step")
@@ -572,6 +570,7 @@ class Trainer():
                         print("Skipping validation")
                         self.skip_val = False
                     else:
+                        #pass
                         self.heavy_logging()
     
                 if self.it > 0 and self.it % self.args.logging.log_interval == 0 and self.args.logging.log:

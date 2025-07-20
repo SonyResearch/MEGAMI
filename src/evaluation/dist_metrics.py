@@ -500,7 +500,6 @@ class KADFeatures(DistMetric):
                 embed= dict_p_hat[key]
                 embed=torch.tensor(embed).to(self.device).unsqueeze(0)
 
-                print("embed shape:", embed.shape)
                 embed_mid, embed_side = torch.chunk(embed, 2, dim=-1)
 
                 if self.type== "AFxRep-mid":
@@ -689,7 +688,6 @@ class FADFeatures(DistMetric):
                 "fid calculation produces singular product; "
                 "adding %s to diagonal of cov estimates"
             ) % eps
-            print(msg)
             offset = np.eye(sigma1.shape[0]) * eps
             covmean = linalg.sqrtm((sigma1 + offset).dot(sigma2 + offset))
     
@@ -719,7 +717,6 @@ class FADFeatures(DistMetric):
 
         all_features = torch.cat(list(features_dicto.values()), dim=0)
 
-        print("all_features shape:", all_features.shape)
 
         #mean
         #mean_features = all_features.mean(dim=0)
@@ -752,7 +749,6 @@ class FADFeatures(DistMetric):
         y_values = list(dict_features_y.values())
         y_values = torch.cat(y_values, dim=0)
 
-        print("y_values shape:", y_values.shape)
 
 
         if self.pca is None:

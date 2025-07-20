@@ -293,7 +293,7 @@ class Tester():
 
         return y
 
-    def test_conditional_style_multitrack(self, mode, exp_description="", input_type="dry"):
+    def test_conditional_style_multitrack(self, mode, exp_description="", input_type="dry", residual=False):
 
         for k, test_set in self.test_set_dict.items():
 
@@ -348,12 +348,18 @@ class Tester():
     
                 try:
                     if input_type == "dry" or input_type == "fxnorm_dry":
-                        preds=self.sample_conditional_style_multitrack(mode, sample_x, B=B, cluster=cluster, masks=masks, taxonomy=taxonomy, input_type=input_type)
+                        preds=self.sample_conditional_style_multitrack(mode, sample_x, B=B, cluster=cluster, masks=masks, taxonomy=taxonomy, input_type=input_type, residual=residual)
                     elif input_type == "fxnorm_wet":
-                        preds=self.sample_conditional_style_multitrack(mode, sample_y, B=B, cluster=cluster, masks=masks, taxonomy=taxonomy, input_type=input_type)
+                        preds=self.sample_conditional_style_multitrack(mode, sample_y, B=B, cluster=cluster, masks=masks, taxonomy=taxonomy, input_type=input_type, residual=residual)
                 except Exception as e:
                     print(f"Error during sampling: {e}")
                     continue
+
+                    
+                print("preds", preds.shape, "sample_y", sample_y.shape, "sample_x", sample_x.shape)
+                print("preds", preds.std(), "sample_y", sample_y.std(), "sample_x", sample_x.std())
+                #check the l2 norm of the predictions
+                print("L2 norm of predictions:", torch.norm(preds, p=2, dim=(-1)).mean().item())   
 
                 for b in range(B):
                     indexes=masks[b].nonzero(as_tuple=True)[0]  # Get the indexes of the tracks that are present in the batch
@@ -561,7 +567,7 @@ class Tester():
                         print(f"Error computing metric {metric}: {e}")
                         continue
                         
-    def sample_conditional_style_multitrack(self, mode,  cond, B=1, cluster=None, taxonomy=None, masks=None, input_type="dry"):
+    def sample_conditional_style_multitrack(self, mode,  cond, B=1, cluster=None, taxonomy=None, masks=None, input_type="dry",residual=False):
         # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
         audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
         #shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
@@ -571,10 +577,17 @@ class Tester():
         print("shape", shape)
         with torch.no_grad():
             is_wet= "wet" in input_type
+            if residual:
+                style_emb_cond = self.sampler.diff_params.style_encode(cond, use_adaptor=True if is_wet else False, masks=masks)
+            else:
+                style_emb_cond=None
             cond, x_preprocessed=self.sampler.diff_params.transform_forward(cond,  is_condition=True, is_test=True, clusters=cluster, taxonomy=taxonomy, masks=masks, is_wet=is_wet)
-            preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device, taxonomy=taxonomy, masks=masks)
+            if style_emb_cond is not None:
+                cond=(cond, style_emb_cond)  # cond is a tuple of (cond, style_emb_cond) if style_emb_cond is not None, else just cond
+
+            preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device, taxonomy=taxonomy, masks=masks )
         
-        print("preds", preds.shape, "cond", cond.shape, "x_preprocessed", x_preprocessed.shape)
+        #print("preds", preds.shape, "cond", cond.shape, "x_preprocessed", x_preprocessed.shape)
 
         return preds
 
@@ -726,5 +739,11 @@ class Tester():
                     self.save_experiment_args(m)
                 self.test_conditional_style_multitrack(m, input_type="fxnorm_wet")
                 self.test_conditional_style_multitrack(m, input_type="fxnorm_dry")
+            elif m== "style_conditional_fxnorm_multitrack_residual":
+                if not self.in_training:
+                    self.prepare_directories(m, unconditional=False)
+                    self.save_experiment_args(m)
+                self.test_conditional_style_multitrack(m, input_type="fxnorm_wet",residual=True)
+                self.test_conditional_style_multitrack(m, input_type="fxnorm_dry", residual=True)
             else:
                 print("Warning: unknown mode: ", m)

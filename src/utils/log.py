@@ -849,7 +849,6 @@ def make_PCA_figure(data_dict, num_bins=20, title="PCA"):
     markers= ["o", "x", "D", "^", "v", "x", "p", "*", "h", "+", "s"]
     colors=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
 
-    print("data dict", data_dict)
 
     for i,(k, v) in enumerate(data_dict.items()):
         if v is None or len(v) == 0:

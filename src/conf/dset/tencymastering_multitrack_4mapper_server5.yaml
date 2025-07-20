@@ -7,7 +7,6 @@ train:
   stereo: True
   only_dry: True
 
-  random_order: True
   random_polarity: True
   random_shift: 16 #shift in samples to apply to the audio, if random
 
@@ -32,11 +31,9 @@ train:
   seed: 42
 
 validation:
-  _target_: datasets.tency_mastering_multitrack_simulated.TencyMastering_Test
-  mode: "dry-wet"
+  _target_: datasets.tency_mastering_multitrack_random.TencyMastering_Test
+  mode: "validation"
 
-  random_order: True
-  random_num_tracks: False
 
   only_dry: False
 
@@ -47,8 +44,8 @@ validation:
   num_tracks: -1
   #num_tracks: 5
 
-  tracks: ["vocals","bass","drums"]
-  clusters: [0,1]
+  #tracks: ["vocals","bass","drums"]
+  tracks: "all"
 
   path_csv: "/data5/eloi/TencyMastering/PANNs_country_pop/val_split.csv"
 
@@ -59,7 +56,7 @@ validation:
     rms_dry: -25
     #normalize_mode: Null
 
-  num_examples: -1
+  num_examples: 256
 
 
   RMS_threshold_dB: -40.0
@@ -68,12 +65,10 @@ validation:
   seed: 42
 
 validation_2:
-  _target_: datasets.tency_mastering_multitrack_simulated.TencyMastering_Test
+  _target_: datasets.tency_mastering_multitrack_random.TencyMastering_Test
+  mode: "train"
 
-  random_order: True
-  random_num_tracks: False
 
-  mode: "dry-wet-train"
   segment_length: 525312
   fs: 44100
   stereo: True
@@ -84,21 +79,17 @@ validation_2:
   num_tracks: 36
   #num_tracks: 5
 
-  tracks: ["vocals","bass","drums"]
-  clusters: [0,1]
+  #tracks: ["vocals","bass","drums"]
+  tracks: "all" 
+  #clusters: [0,1]
 
   path_csv: "/data5/eloi/TencyMastering/PANNs_country_pop/train_split.csv"
 
   normalize_params:
-    #normalize_mode: "loudness_dry"
-    #loudness_dry: -18.0
     normalize_mode: "rms_dry"
     rms_dry: -25
-    #normalize_mode: "rms_dry"
-    #rms_dry: -18
-    #normalize_mode: Null
 
-  num_examples: -1
+  num_examples: 256
 
   RMS_threshold_dB: -40.0
  

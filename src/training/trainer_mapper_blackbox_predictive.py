@@ -1,4 +1,5 @@
 import os
+import math
 import sys
 import time
 import copy
@@ -20,7 +21,8 @@ from fx_model.fx_pipeline import EffectRandomizer
 #from fx_model.distribution_presets.clusters_vocals import get_distributions_Cluster0, get_distributions_Cluster1
 
 from fx_model.distribution_presets.clusters_multitrack import get_distributions_Cluster0_vocals, get_distributions_Cluster1_vocals, get_distributions_Cluster0_bass, get_distributions_Cluster1_bass, get_distributions_Cluster0_drums, get_distributions_Cluster1_drums
-from fx_model.distribution_presets.uniform_RMSnorm import get_distributions_uniform
+#from fx_model.distribution_presets.uniform_RMSnorm import get_distributions_uniform
+from fx_model.distribution_presets.uniform import get_distributions_uniform
 
 import logging
 # Configure at the beginning of your program
@@ -151,7 +153,6 @@ class Trainer():
                 self.setup_wandb()
                 if self.tester is not None:
                     self.tester.setup_wandb_run(self.wandb_run)
-                self.setup_logging_variables()
 
         self.skip_val=False  # This is used to skip validation during training, useful for debugging
 
@@ -206,20 +207,12 @@ class Trainer():
 
         original_path = sys.path.copy()
    
-        from evaluation.feature_extractors import load_CLAP
-        CLAP_encoder= load_CLAP(CLAP_args, device=self.device)
-        sys.path = original_path
-        def encode_fn(x, *args):
-            x=x.to(self.device)
-            z=CLAP_encoder(x, type="dry") #shape (B, C)
-            return z
-        self.CLAP_encode=encode_fn
 
-        self.losses = []  # This will be used to store the losses for logging
-        self.cossims = []  # This will be used to store the cosine similarities for logging
+        self.losses = {} # This will be used to store the losses for logging
 
+        self.RMS_norm=self.args.exp.RMS_norm  # Use fixed RMS for evaluation, hardcoded for now
+        
 
-        self.RMS_norm=-25
 
         if self.args.exp.FXenc_args.type=="AFxRep":
 
@@ -234,9 +227,261 @@ class Trainer():
             
             self.FXenc=fxencode_fn
             #self.FXenc_compiled=torch.compile(fxencode_fn)
+        elif self.args.exp.FXenc_args.type=="AFxRep+AF":
+
+            AFxRep_args= self.args.exp.AFxRep_args
+            from evaluation.feature_extractors import load_AFxRep
+            AFxRep_encoder= load_AFxRep(AFxRep_args, device=self.device)
+
+            from utils.AF_features_embedding import AF_fourier_embedding
+            AFembedding= AF_fourier_embedding(device=self.device)
+        
+            def fxencode_fn(x):
+
+                z=AFxRep_encoder(x)
+
+                z_af,_=AFembedding.encode(x)
+
+                #l2 normalize z and z_af (just in case)
+                z = torch.nn.functional.normalize(z, dim=-1, p=2)
+                z_af = torch.nn.functional.normalize(z_af, dim=-1, p=2)
+
+                #rescale z and z_af with sqrt(dim) to keep the same scale
+                z=z* math.sqrt(z.shape[-1])
+                z_af=z_af* math.sqrt(z_af.shape[-1])
+
+
+                x_all= torch.cat([z, z_af], dim=-1)
+                #now L2 normalize
+
+                return torch.nn.functional.normalize(x_all, dim=-1, p=2)
+            
+            self.FXenc=fxencode_fn
+            #self.FXenc_compiled=torch.compile(fxencode_fn)
+        elif self.args.exp.FXenc_args.type=="fx_encoder_++":
+            Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
+
+            from evaluation.feature_extractors import load_fx_encoder_plusplus
+            feat_extractor = load_fx_encoder_plusplus(Fxencoder_kwargs, self.device)
+
+            def fxencode_fn(x):
+                """
+                x: tensor of shape [B, C, L] where B is the batch size, C is the number of channels and L is the length of the audio
+                """
+                z=feat_extractor(x)
+                return z
+            self.FXenc=fxencode_fn
+        elif self.args.exp.FXenc_args.type=="fx_encoder+AFv2":
+            Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
+
+            from evaluation.feature_extractors import load_fx_encoder_plusplus
+            feat_extractor = load_fx_encoder_plusplus(Fxencoder_kwargs, self.device)
+
+            from utils.AF_features_embedding_v2 import AF_fourier_embedding
+
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def fxencode_fn(x):
+                """
+                x: tensor of shape [B, C, L] where B is the batch size, C is the number of channels and L is the length of the audio
+                """
+                z=feat_extractor(x)
+                #l2 normalize z (just in case)
+                z = torch.nn.functional.normalize(z, dim=-1, p=2)
+                z_af,_=AFembedding.encode(x)
+                #l2 normalize z_af (just in case)
+                #z_af = torch.nn.functional.normalize(z_af, dim=-1, p=2)
+
+                #concatenate z and z_af (rescaling with sqrt(dim) to keep the same scale)
+
+                z=z* math.sqrt(z.shape[-1]) 
+                z_af=z_af* math.sqrt(z_af.shape[-1])
+
+
+
+                z_all= torch.cat([z, z_af], dim=-1)
+
+                #now L2 normalize
+
+                #return torch.nn.functional.normalize(z_all, dim=-1, p=2)
+                return z_all/ math.sqrt(z_all.shape[-1])  # L2 normalize by dividing by sqrt(dim) to keep the same scale
+
+            self.FXenc=fxencode_fn
+        elif self.args.exp.FXenc_args.type=="AFxRep+AFv2":
+            
+            AFxRep_args= self.args.exp.AFxRep_args
+            from evaluation.feature_extractors import load_AFxRep
+            AFxRep_encoder= load_AFxRep(AFxRep_args, device=self.device)
+
+            from utils.AF_features_embedding_v2 import AF_fourier_embedding
+
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def fxencode_fn(x):
+                z=AFxRep_encoder(x)
+
+                z_af,_=AFembedding.encode(x)
+
+                #l2 normalize z and z_af (just in case)
+                z = torch.nn.functional.normalize(z, dim=-1, p=2)
+                z_af = torch.nn.functional.normalize(z_af, dim=-1, p=2)
+
+                #rescale z and z_af with sqrt(dim) to keep the same scale
+                z=z* math.sqrt(z.shape[-1])
+                z_af=z_af* math.sqrt(z_af.shape[-1])
+
+
+                x_all= torch.cat([z, z_af], dim=-1)
+                #now L2 normalize
+
+                return torch.nn.functional.normalize(x_all, dim=-1, p=2)
+
+            self.FXenc=fxencode_fn
+
+        elif self.args.exp.FXenc_args.type=="fx_encoder2048+AFv2":
+            Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
+
+            from evaluation.feature_extractors import load_fx_encoder_plusplus_2048
+            feat_extractor = load_fx_encoder_plusplus_2048(Fxencoder_kwargs, self.device)
+
+            from utils.AF_features_embedding_v2 import AF_fourier_embedding
+
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def fxencode_fn(x):
+                """
+                x: tensor of shape [B, C, L] where B is the batch size, C is the number of channels and L is the length of the audio
+                """
+                z=feat_extractor(x)
+                #std is approz 1.7
+                #normalize to unit variance
+                z=z/1.7
+
+                z_af,_=AFembedding.encode(x)
+                #embedding is l2 normalized, normalize to unit variance
+                z_af=z_af* math.sqrt(z_af.shape[-1])  # rescale to keep the same scale
+
+                #concatenate z and z_af (rescaling with sqrt(dim) to keep the same scale)
+
+                #z=z* math.sqrt(z.shape[-1]) 
+                #z_af=z_af* math.sqrt(z_af.shape[-1])
+
+
+
+                z_all= torch.cat([z, z_af], dim=-1)
+
+                #now L2 normalize
+
+                #return torch.nn.functional.normalize(z_all, dim=-1, p=2)
+                norm_z= z_all/ math.sqrt(z_all.shape[-1])  # normalize by dividing by sqrt(dim) to keep the same scale
+
+                return norm_z
+
+            self.FXenc=fxencode_fn
+        elif self.args.exp.FXenc_args.type=="fx_encoder2048+AFv3":
+            Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
+
+            from evaluation.feature_extractors import load_fx_encoder_plusplus_2048
+            feat_extractor = load_fx_encoder_plusplus_2048(Fxencoder_kwargs, self.device)
+
+            from utils.AF_features_embedding_v2 import AF_fourier_embedding
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def fxencode_fn(x):
+                """
+                x: tensor of shape [B, C, L] where B is the batch size, C is the number of channels and L is the length of the audio
+                """
+                z=feat_extractor(x)
+                z= torch.nn.functional.normalize(z, dim=-1, p=2)  # normalize to unit variance
+                z= z* math.sqrt(z.shape[-1])  # rescale to keep the same scale
+                #std is approz 1.7
+                #normalize to unit variance
+                #z=z/1.7
+
+                z_af,_=AFembedding.encode(x)
+                #embedding is l2 normalized, normalize to unit variance
+                z_af=z_af* math.sqrt(z_af.shape[-1])  # rescale to keep the same scale
+
+                #concatenate z and z_af (rescaling with sqrt(dim) to keep the same scale)
+
+
+
+                z_all= torch.cat([z, z_af], dim=-1)
+
+                #now L2 normalize
+
+                #return torch.nn.functional.normalize(z_all, dim=-1, p=2)
+                norm_z= z_all/ math.sqrt(z_all.shape[-1])  # normalize by dividing by sqrt(dim) to keep the same scale
+
+                return norm_z
+            
+            def get_log_rms_from_z(z):
+
+                z = z * math.sqrt(z.shape[-1])  # rescale to keep the same scale
+                AF=z[...,2048:]  # assuming the AF features are the last 2048 dimensions
+                AF=AF/ math.sqrt(AF.shape[-1])  # normalize to unit variance
+
+                features= AFembedding.decode(AF)
+                log_rms=features[0]
+
+                return log_rms
+
+            self.FXenc=fxencode_fn
+            self.get_log_rms_from_z=get_log_rms_from_z  
+
+        elif self.args.exp.FXenc_args.type=="fx_encoder+AF":
+            Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
+
+            from evaluation.feature_extractors import load_fx_encoder_plusplus
+            feat_extractor = load_fx_encoder_plusplus(Fxencoder_kwargs, self.device)
+
+            from utils.AF_features_embedding import AF_fourier_embedding
+
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def fxencode_fn(x):
+                """
+                x: tensor of shape [B, C, L] where B is the batch size, C is the number of channels and L is the length of the audio
+                """
+                z=feat_extractor(x)
+                #l2 normalize z (just in case)
+                z = torch.nn.functional.normalize(z, dim=-1, p=2)
+                z_af,_=AFembedding.encode(x)
+                #l2 normalize z_af (just in case)
+                z_af = torch.nn.functional.normalize(z_af, dim=-1, p=2)
+
+                #concatenate z and z_af (rescaling with sqrt(dim) to keep the same scale)
+
+                z=z* math.sqrt(z.shape[-1]) 
+                z_af=z_af* math.sqrt(z_af.shape[-1])
+
+
+
+                z_all= torch.cat([z, z_af], dim=-1)
+
+                #now L2 normalize
+
+                return torch.nn.functional.normalize(z_all, dim=-1, p=2)
+
+            self.FXenc=fxencode_fn
+        elif self.args.exp.FXenc_args.type=="AF":
+            from utils.AF_features_embedding import AF_fourier_embedding
+
+            embedding= AF_fourier_embedding(device=self.device)
+
+            def fxencode_fn(x):
+                """
+                x: tensor of shape [B, C, L] where B is the batch size, C is the number of channels and L is the length of the audio
+                """
+                z=embedding.encode(x)
+                return z
+            
+            self.FXenc=fxencode_fn
+
         else:
             raise NotImplementedError("Only AFxRep is implemented for now")
 
+        self.loss_weights = None  # This will be used to store the loss weights for each loss function, if needed
         
         if self.args.exp.loss.type == "MSS_mslr":
 
@@ -256,11 +501,464 @@ class Trainer():
                 loss_midside = multi_scale_spectral_midside(x_pred, y)
                 loss_ori = multi_scale_spectral_ori(x_pred, y)
 
-                loss = loss_midside + loss_ori
+                loss_dictionary = {
+                    "loss_mss_midside": loss_midside,
+                    "loss_mss_lr": loss_ori,
+                }
 
-                return loss
+                return loss_dictionary
 
+            self.losses = {"loss_mss_midside": [], "loss_mss_lr": []}
+            self.loss_weights = {"loss_mss_midside": 1.0, "loss_mss_lr": 1.0}
             self.loss_fn = loss_fn  
+
+        elif self.args.exp.loss.type == "MSS_mslr+GANv2+fxenc":
+
+            from utils.ITOMaster_loss import MultiScale_Spectral_Loss_MidSide_DDSP
+
+            multi_scale_spectral_midside = MultiScale_Spectral_Loss_MidSide_DDSP(mode='midside', eps=1e-6, device=device)
+            multi_scale_spectral_ori = MultiScale_Spectral_Loss_MidSide_DDSP(mode='ori', eps=1e-6, device=device)
+
+            from networks.discriminator import Discriminator
+            self.discriminator=Discriminator(
+                rates=[1,2,4],
+                periods=[2,3,5],
+                fft_sizes = [ 512, 256],
+            )
+
+            self.discriminator.to(device)
+
+            from utils.GANloss import GANLoss
+            self.gan_loss = GANLoss(self.discriminator) 
+
+            self.optimizer_d= torch.optim.AdamW(
+                self.discriminator.parameters(),
+                lr=1e-4)
+
+            Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
+
+            from evaluation.feature_extractors import load_fx_encoder_plusplus
+            feat_extractor_fxenc = load_fx_encoder_plusplus(Fxencoder_kwargs, self.device)
+
+
+            def loss_fn_discriminaror(x_pred, y):
+                return self.gan_loss.discriminator_loss(x_pred, y)
+
+
+            def loss_fn(x_pred, y):
+                """
+                Loss function, which is the mean squared error between the denoised latent and the clean latent
+                Args:
+                    x_pred (Tensor): shape: (B,T) Intermediate noisy latent to denoise
+                    y (Tensor): shape: (B,T) Clean latent
+                """
+
+                loss_midside = multi_scale_spectral_midside(x_pred, y)
+                loss_ori = multi_scale_spectral_ori(x_pred, y)
+
+
+                loss_g, loss_feature = self.gan_loss.generator_loss(x_pred, y)
+
+                z_pred= feat_extractor_fxenc(x_pred)
+                z= feat_extractor_fxenc(y)
+
+                # l2 normalize z and z_pred (just in case)
+                z_pred = torch.nn.functional.normalize(z_pred, dim=-1, p=2)
+                z = torch.nn.functional.normalize(z, dim=-1, p=2)
+
+                #cosine distance between z_pred and z
+                loss_fxenc = 1- torch.nn.functional.cosine_similarity(z_pred, z, dim=-1).mean()
+
+
+                loss_dictionary = {
+                    "loss_mss_midside": loss_midside,
+                    "loss_mss_lr": loss_ori,
+                    "adversarial_loss": loss_g,
+                    "feature_loss": loss_feature,  # This is the feature matching loss
+                    "loss_fxenc": loss_fxenc,
+                }
+
+
+
+                return loss_dictionary
+
+
+            self.losses = {"loss_mss_midside": [], "loss_mss_lr": [], "adversarial_loss": [], "feature_loss": [], "loss_discriminator": [], "loss_fxenc": []}
+            self.loss_weights = {"loss_mss_midside": 1.0, "loss_mss_lr": 1.0, "adversarial_loss": 0.15, "feature_loss": 0.05, "loss_discriminator": 0.15, "loss_fxenc": 1.0}
+            self.loss_fn = loss_fn  
+            self.loss_fn_discriminator = loss_fn_discriminaror
+
+        elif self.args.exp.loss.type == "MSS_mslr+GAN":
+
+            from utils.ITOMaster_loss import MultiScale_Spectral_Loss_MidSide_DDSP
+
+            multi_scale_spectral_midside = MultiScale_Spectral_Loss_MidSide_DDSP(mode='midside', eps=1e-6, device=device)
+            multi_scale_spectral_ori = MultiScale_Spectral_Loss_MidSide_DDSP(mode='ori', eps=1e-6, device=device)
+
+            from networks.discriminator import Discriminator
+            self.discriminator=Discriminator()
+            self.discriminator.to(device)
+
+            from utils.GANloss import GANLoss
+            self.gan_loss = GANLoss(self.discriminator) 
+
+            self.optimizer_d= torch.optim.AdamW(
+                self.discriminator.parameters(),
+                lr=1e-4)
+
+
+            def loss_fn_discriminaror(x_pred, y):
+                return self.gan_loss.discriminator_loss(x_pred, y)
+
+
+            def loss_fn(x_pred, y):
+                """
+                Loss function, which is the mean squared error between the denoised latent and the clean latent
+                Args:
+                    x_pred (Tensor): shape: (B,T) Intermediate noisy latent to denoise
+                    y (Tensor): shape: (B,T) Clean latent
+                """
+
+                loss_midside = multi_scale_spectral_midside(x_pred, y)
+                loss_ori = multi_scale_spectral_ori(x_pred, y)
+
+
+                loss_g, loss_feature = self.gan_loss.generator_loss(x_pred, y)
+
+                loss_dictionary = {
+                    "loss_mss_midside": loss_midside,
+                    "loss_mss_lr": loss_ori,
+                    "adversarial_loss": loss_g,
+                    "feature_loss": loss_feature,  # This is the feature matching loss
+                }
+
+
+
+                return loss_dictionary
+
+
+            self.losses = {"loss_mss_midside": [], "loss_mss_lr": [], "adversarial_loss": [], "feature_loss": [], "loss_discriminator": []}
+            self.loss_weights = {"loss_mss_midside": 1.0, "loss_mss_lr": 1.0, "adversarial_loss": 0.15, "feature_loss": 0.05, "loss_discriminator": 0.15}
+            self.loss_fn = loss_fn  
+            self.loss_fn_discriminator = loss_fn_discriminaror
+
+        elif self.args.exp.loss.type == "MSS_mslr+fxenc+SL1":
+
+            from utils.ITOMaster_loss import MultiScale_Spectral_Loss_MidSide_DDSP
+
+            multi_scale_spectral_midside = MultiScale_Spectral_Loss_MidSide_DDSP(mode='midside', eps=1e-6, device=device)
+            multi_scale_spectral_ori = MultiScale_Spectral_Loss_MidSide_DDSP(mode='ori', eps=1e-6, device=device)
+
+            Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
+
+            from evaluation.feature_extractors import load_fx_encoder_plusplus
+            feat_extractor_fxenc = load_fx_encoder_plusplus(Fxencoder_kwargs, self.device)
+
+            smooth_l1 = torch.nn.SmoothL1Loss().to(self.device)
+
+
+            def loss_fn(x_pred, y):
+                """
+                Loss function, which is the mean squared error between the denoised latent and the clean latent
+                Args:
+                    x_pred (Tensor): shape: (B,T) Intermediate noisy latent to denoise
+                    y (Tensor): shape: (B,T) Clean latent
+                """
+                x_pred=x_pred.contiguous()
+
+                loss_midside = multi_scale_spectral_midside(x_pred, y)
+                loss_ori = multi_scale_spectral_ori(x_pred, y)
+
+                z_pred= feat_extractor_fxenc(x_pred)
+                z= feat_extractor_fxenc(y)
+
+                # l2 normalize z and z_pred (just in case)
+                z_pred = torch.nn.functional.normalize(z_pred, dim=-1, p=2)
+                z = torch.nn.functional.normalize(z, dim=-1, p=2)
+
+                #cosine distance between z_pred and z
+                loss_fxenc = 1- torch.nn.functional.cosine_similarity(z_pred, z, dim=-1).mean()
+
+                loss_sl1 = smooth_l1(x_pred, y)
+
+
+                loss_dictionary = {
+                    "loss_mss_midside": loss_midside,
+                    "loss_mss_lr": loss_ori,
+                    "loss_fxenc": loss_fxenc,
+                    "loss_sl1": loss_sl1
+                }
+
+                return loss_dictionary
+
+            self.losses = {"loss_mss_midside": [], "loss_mss_lr": [], "loss_fxenc": [], "loss_sl1": []}
+            self.loss_weights = {"loss_mss_midside": 1.0, "loss_mss_lr": 1.0, "loss_fxenc": 1.5, "loss_sl1": 100.0}
+            self.loss_fn = loss_fn  
+        elif self.args.exp.loss.type == "MSS_mslr+fxenc":
+
+            from utils.ITOMaster_loss import MultiScale_Spectral_Loss_MidSide_DDSP
+
+            multi_scale_spectral_midside = MultiScale_Spectral_Loss_MidSide_DDSP(mode='midside', eps=1e-6, device=device)
+            multi_scale_spectral_ori = MultiScale_Spectral_Loss_MidSide_DDSP(mode='ori', eps=1e-6, device=device)
+
+            Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
+
+            from evaluation.feature_extractors import load_fx_encoder_plusplus
+            feat_extractor_fxenc = load_fx_encoder_plusplus(Fxencoder_kwargs, self.device)
+
+
+            def loss_fn(x_pred, y):
+                """
+                Loss function, which is the mean squared error between the denoised latent and the clean latent
+                Args:
+                    x_pred (Tensor): shape: (B,T) Intermediate noisy latent to denoise
+                    y (Tensor): shape: (B,T) Clean latent
+                """
+
+                loss_midside = multi_scale_spectral_midside(x_pred, y)
+                loss_ori = multi_scale_spectral_ori(x_pred, y)
+
+                z_pred= feat_extractor_fxenc(x_pred)
+                z= feat_extractor_fxenc(y)
+
+                # l2 normalize z and z_pred (just in case)
+                z_pred = torch.nn.functional.normalize(z_pred, dim=-1, p=2)
+                z = torch.nn.functional.normalize(z, dim=-1, p=2)
+
+                #cosine distance between z_pred and z
+                loss_fxenc = 1- torch.nn.functional.cosine_similarity(z_pred, z, dim=-1).mean()
+
+
+                loss_dictionary = {
+                    "loss_mss_midside": loss_midside,
+                    "loss_mss_lr": loss_ori,
+                    "loss_fxenc": loss_fxenc,
+                }
+
+                return loss_dictionary
+
+            self.losses = {"loss_mss_midside": [], "loss_mss_lr": [], "loss_fxenc": []}
+            self.loss_weights = {"loss_mss_midside": 1.0, "loss_mss_lr": 1.0, "loss_fxenc": 1.5}
+            self.loss_fn = loss_fn  
+        elif self.args.exp.loss.type == "MSS_mslr+fxenc+AF":
+
+            from utils.ITOMaster_loss import MultiScale_Spectral_Loss_MidSide_DDSP
+
+            multi_scale_spectral_midside = MultiScale_Spectral_Loss_MidSide_DDSP(mode='midside', eps=1e-6, device=device)
+            multi_scale_spectral_ori = MultiScale_Spectral_Loss_MidSide_DDSP(mode='ori', eps=1e-6, device=device)
+
+            Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
+
+            from evaluation.feature_extractors import load_fx_encoder_plusplus
+            feat_extractor_fxenc = load_fx_encoder_plusplus(Fxencoder_kwargs, self.device)
+
+            from utils.ITOMaster_loss import compute_log_rms, compute_crest_factor, compute_stereo_width, compute_stereo_imbalance
+
+            def loss_fn(x_pred, y):
+                """
+                Loss function, which is the mean squared error between the denoised latent and the clean latent
+                Args:
+                    x_pred (Tensor): shape: (B,T) Intermediate noisy latent to denoise
+                    y (Tensor): shape: (B,T) Clean latent
+                """
+
+                loss_midside = multi_scale_spectral_midside(x_pred, y)
+                loss_ori = multi_scale_spectral_ori(x_pred, y)
+
+                z_pred= feat_extractor_fxenc(x_pred)
+                z= feat_extractor_fxenc(y)
+
+                # l2 normalize z and z_pred (just in case)
+                z_pred = torch.nn.functional.normalize(z_pred, dim=-1, p=2)
+                z = torch.nn.functional.normalize(z, dim=-1, p=2)
+
+                #cosine distance between z_pred and z
+                loss_fxenc = 1- torch.nn.functional.cosine_similarity(z_pred, z, dim=-1).mean()
+
+
+                log_rms_pred = compute_log_rms(x_pred)
+                log_rms= compute_log_rms(y)
+
+                loss_log_rms = torch.abs(log_rms_pred - log_rms).mean()
+
+                crest_factor_pred = compute_crest_factor(x_pred)
+                crest_factor= compute_crest_factor(y)
+
+                loss_crest_factor = torch.abs(crest_factor_pred - crest_factor).mean()
+
+                stereo_width_pred = compute_stereo_width(x_pred)
+                stereo_width= compute_stereo_width(y)
+
+                loss_stereo_width = torch.abs(stereo_width_pred - stereo_width).mean()
+
+                stereo_imbalance_pred = compute_stereo_imbalance(x_pred)
+                stereo_imbalance= compute_stereo_imbalance(y)
+                loss_stereo_imbalance = torch.abs(stereo_imbalance_pred - stereo_imbalance).mean()
+                
+
+                loss_dictionary = {
+                    "loss_mss_midside": loss_midside,
+                    "loss_mss_lr": loss_ori,
+                    "loss_fxenc": loss_fxenc,
+                    "loss_log_rms": loss_log_rms,
+                    "loss_crest_factor": loss_crest_factor,
+                    "loss_stereo_width": loss_stereo_width,
+                    "loss_stereo_imbalance": loss_stereo_imbalance
+                }
+
+                return loss_dictionary
+
+            self.losses = {"loss_mss_midside": [], "loss_mss_lr": [], "loss_fxenc": [], "loss_log_rms": [], "loss_crest_factor": [], "loss_stereo_width": [], "loss_stereo_imbalance": []}
+            self.loss_weights = {"loss_mss_midside": 1.0, "loss_mss_lr": 1.0, "loss_fxenc": 1.0, 
+                                 "loss_log_rms": 0.125, "loss_crest_factor": 0.125, 
+                                 "loss_stereo_width":1.0 , "loss_stereo_imbalance": 1.00}
+            self.loss_fn = loss_fn  
+
+        elif self.args.exp.loss.type == "MSS_mslr+MLDR":
+
+            from utils.ITOMaster_loss import MultiScale_Spectral_Loss_MidSide_DDSP
+
+            multi_scale_spectral_midside = MultiScale_Spectral_Loss_MidSide_DDSP(mode='midside', eps=1e-6, device=device)
+            multi_scale_spectral_ori = MultiScale_Spectral_Loss_MidSide_DDSP(mode='ori', eps=1e-6, device=device)
+
+            from evaluation.ldr import MLDRLoss
+            mldr_lr= MLDRLoss(
+                sr=44100,
+                s_taus=[50, 100],
+                l_taus=[1000, 2000],
+            ).cuda()
+            from evaluation.ldr import MLDRLoss
+            mldr_ms= MLDRLoss(
+                sr=44100,
+                s_taus=[50, 100],
+                l_taus=[1000, 2000],
+                mid_side=True
+            ).cuda()
+
+            def loss_fn(x_pred, y):
+                """
+                Loss function, which is the mean squared error between the denoised latent and the clean latent
+                Args:
+                    x_pred (Tensor): shape: (B,T) Intermediate noisy latent to denoise
+                    y (Tensor): shape: (B,T) Clean latent
+                """
+
+                loss_midside = multi_scale_spectral_midside(x_pred, y)
+                loss_ori = multi_scale_spectral_ori(x_pred, y)
+
+
+                loss_mldr_midside = mldr_ms(x_pred, y)
+                loss_mldr_lr = mldr_lr(x_pred, y)
+
+                loss_dictionary = {
+                    "loss_mss_midside": loss_midside,
+                    "loss_mss_lr": loss_ori,
+                    "loss_mldr_midside": loss_mldr_midside,
+                    "loss_mldr_lr": loss_mldr_lr
+                }
+
+                return loss_dictionary
+
+            self.losses = {"loss_mss_midside": [], "loss_mss_lr": [], "loss_mldr_midside": [], "loss_mldr_lr": []}
+            self.loss_weights = {"loss_mss_midside": 1.0, "loss_mss_lr": 1.0, "loss_mldr_midside": 0.125, "loss_mldr_lr": 0.25}
+            self.loss_fn = loss_fn  
+
+
+        elif self.args.exp.loss.type == "DiffVox_MSS":
+            from auraloss.freq import MultiResolutionSTFTLoss
+            mss_lr=MultiResolutionSTFTLoss(
+                [128, 512, 2048],
+                [32, 128, 512],
+                [128, 512, 2048],
+                sample_rate=44100,
+                perceptual_weighting=True,
+            ).cuda()
+            from auraloss.freq import  SumAndDifferenceSTFTLoss
+            mss_ms=SumAndDifferenceSTFTLoss(
+            [128, 512, 2048],
+            [32, 128, 512],
+            [128, 512, 2048],
+            sample_rate=44100,
+            perceptual_weighting=True,
+            ).cuda()
+
+            def loss_fn(x_pred, y):
+                """
+                Loss function, which is the mean squared error between the denoised latent and the clean latent
+                Args:
+                    x_pred (Tensor): shape: (B,T) Intermediate noisy latent to denoise
+                    y (Tensor): shape: (B,T) Clean latent
+                """
+
+                loss_mss_midside = mss_ms(x_pred, y)
+                loss_mss_lr = mss_lr(x_pred, y)
+
+                loss_dictionary = {
+                    "loss_mss_midside": 0.5*loss_mss_midside,
+                    "loss_mss_lr": loss_mss_lr,
+                }
+
+                return loss_dictionary
+
+            self.losses = {"loss_mss_midside": [], "loss_mss_lr": []}
+            self.loss_fn = loss_fn  
+        elif self.args.exp.loss.type == "DiffVox_MSS_MLDR":
+            from auraloss.freq import MultiResolutionSTFTLoss
+            mss_lr=MultiResolutionSTFTLoss(
+                [128, 512, 2048],
+                [32, 128, 512],
+                [128, 512, 2048],
+                sample_rate=44100,
+                perceptual_weighting=True,
+            ).cuda()
+            from auraloss.freq import  SumAndDifferenceSTFTLoss
+            mss_ms=SumAndDifferenceSTFTLoss(
+            [128, 512, 2048],
+            [32, 128, 512],
+            [128, 512, 2048],
+            sample_rate=44100,
+            perceptual_weighting=True,
+            ).cuda()
+            from evaluation.ldr import MLDRLoss
+            mldr_lr= MLDRLoss(
+                sr=44100,
+                s_taus=[50, 100],
+                l_taus=[1000, 2000],
+            ).cuda()
+            from evaluation.ldr import MLDRLoss
+            mldr_ms= MLDRLoss(
+                sr=44100,
+                s_taus=[50, 100],
+                l_taus=[1000, 2000],
+                mid_side=True
+            ).cuda()
+
+            def loss_fn(x_pred, y):
+                """
+                Loss function, which is the mean squared error between the denoised latent and the clean latent
+                Args:
+                    x_pred (Tensor): shape: (B,T) Intermediate noisy latent to denoise
+                    y (Tensor): shape: (B,T) Clean latent
+                """
+
+                loss_mss_midside = mss_ms(x_pred, y)
+                loss_mss_lr = mss_lr(x_pred, y)
+
+                loss_mldr_midside = mldr_ms(x_pred, y)
+                loss_mldr_lr = mldr_lr(x_pred, y)
+
+                loss_dictionary = {
+                    "loss_mss_midside": 0.5*loss_mss_midside,
+                    "loss_mss_lr": loss_mss_lr,
+                    "loss_mldr_midside": 0.25*loss_mldr_midside,
+                    "loss_mldr_lr": 0.5*loss_mldr_lr
+                }
+
+                return loss_dictionary
+
+            self.losses = {"loss_mss_midside": [], "loss_mss_lr": [], "loss_mldr_midside": [], "loss_mldr_lr": []}
+            self.loss_fn = loss_fn  
+
         else:
             raise NotImplementedError("Only MSS_mslr loss is implemented for now")
 
@@ -296,15 +994,6 @@ class Trainer():
                     log_freq=self.args.logging.heavy_log_interval)  # wanb.watch is used to log the gradients and parameters of the model to wandb. And it is used to log the model architecture and the model summary and the model graph and the model weights and the model hyperparameters and the model performance metrics.
         self.wandb_run.name = os.path.basename(
             self.args.model_dir) + "_" + self.args.exp.exp_name + "_" + self.wandb_run.id  # adding the experiment number to the run name, bery important, I hope this does not crash
-
-    def setup_logging_variables(self):
-        if self.diff_params.type == "FM":
-            self.sigma_bins = np.linspace(self.args.diff_params.sde_hp.t_min, self.args.diff_params.sde_hp.t_max,
-                                          num=self.args.logging.num_sigma_bins)
-        elif self.diff_params.type == "ve_karras":
-            self.sigma_bins = np.logspace(np.log10(self.args.diff_params.sde_hp.sigma_min),
-                                          np.log10(self.args.diff_params.sde_hp.sigma_max),
-                                          num=self.args.logging.num_sigma_bins, base=10)
 
     def load_state_dict(self, state_dict):
         return t_utils.load_state_dict(state_dict, network=self.network, ema=self.ema, optimizer=self.optimizer)
@@ -476,6 +1165,24 @@ class Trainer():
 
         return y, x
 
+    def get_batch_paired(self):
+        ''' Get an audio example from dset and apply the transform (spectrogram + compression)'''
+        x, y = next(self.dset)
+        x=x.to(self.device)  # x is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+        y=y.to(self.device)
+
+        if y.shape[-1] > self.args.exp.audio_len:
+            y = y[:, :, :self.args.exp.audio_len]
+        elif y.shape[-1] < self.args.exp.audio_len:
+            raise ValueError("y shape is not correct, expected length {}, got {}".format(self.args.exp.audio_len, y.shape[-1]))
+        
+        if x.shape[-1] > self.args.exp.audio_len:
+            x = x[:, :, :self.args.exp.audio_len]
+        elif x.shape[-1] < self.args.exp.audio_len:
+            raise ValueError("x shape is not correct, expected length {}, got {}".format(self.args.exp.audio_len, x.shape[-1]))
+
+        return x, y
+
     def get_batch(self):
         ''' Get an audio example from dset and apply the transform (spectrogram + compression)'''
         x = next(self.dset)
@@ -493,19 +1200,26 @@ class Trainer():
         #print("x shape", x.shape, "cluster shape", cluster.shape, "taxonomy ", taxonomy, "masks shape", masks.shape)
 
         #print("x rms", 20* torch.log10(x.std(dim=(2, 3)) + 1e-6))
+        if x.shape[-1] > self.args.exp.audio_len:
+            x = x[:, :, :self.args.exp.audio_len]
+        elif x.shape[-1] < self.args.exp.audio_len:
+            raise ValueError("x shape is not correct, expected length {}, got {}".format(self.args.exp.audio_len, x.shape[-1]))
 
 
         return x
 
 
-    def apply_RMS_normalization(self, x):
+    def apply_RMS_normalization(self, x, RMS=None):
 
-        RMS= torch.tensor(self.RMS_norm, device=x.device).view(1, 1, 1).repeat(x.shape[0],1,1)  # Use fixed RMS for evaluation
+        if RMS is None:
+            RMS= torch.tensor(self.RMS_norm, device=x.device).view(1, 1, 1).repeat(x.shape[0],1,1)  # Use fixed RMS for evaluation
+        else:
+            RMS= RMS.view(-1, 1, 1)  
 
         x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
 
         gain= RMS - x_RMS
-        gain_linear = 10 ** (gain / 20 + 1e-6)  # Convert dB gain to linear scale, adding a small value to avoid division by zero
+        gain_linear = 10 ** (gain / 20 + 1e-5)  # Convert dB gain to linear scale, adding a small value to avoid division by zero
         x=x* gain_linear.view(-1, 1, 1)
 
         return x
@@ -520,53 +1234,88 @@ class Trainer():
 
         with torch.no_grad():
             #x, taxonomy, masks = self.get_batch()
-            x = self.get_batch()
-
-        #print("taxonomy", taxonomy)
-
-        #print("time loading batch", time.time() - a, "seconds")
-
-        #print("get batch took", time.time() - a, "seconds")
+            if self.args.exp.data_type=="diffvox_random":
+                x = self.get_batch()
+            elif self.args.exp.data_type=="paired":
+                x, y = self.get_batch_paired()
 
         if self.distributed:
             dist.barrier()
 
         with torch.no_grad():
-            #x, taxonomy = forward_reshaping(x, taxonomy, masks=masks)  # reshape x to [B*N, C, L] and taxonomy to [B*N], take into account the masks
 
-            y=self.apply_random_effects(x)  # apply random effects to x
+            if self.args.exp.data_type=="diffvox_random":
+                y=self.apply_random_effects(x)  # apply random effects to x
 
-            #print("time applying random effects", time.time() - a, "seconds")
+            if y.isnan().any():
+                print("y has NaN values, skipping step")
+                raise ValueError("y has NaN values, skipping step")
 
             #stereo to mono of x and y
             if x.shape[1] == 2:
-                x = x.mean(dim=1, keepdim=True).expand(-1, 2, -1)  # expand to [B*N, 1, L] to keep the shape consistent
+                x = x.mean(dim=1, keepdim=True)  # expand to [B*N, 1, L] to keep the shape consistent
+
+            if y.shape[1] == 1:
+                y = y.expand(-1, 2, -1)
             
             #RMS normalization of x and y
             x= self.apply_RMS_normalization(x)  # apply RMS normalization to x
 
-
-            #rms normalization of y to simplify things.. hardcoded... please change this later
-            y= self.apply_RMS_normalization(y)  # apply RMS normalization to y
-
-
             z=self.FXenc(y)
-            #print("time applying FXenc", time.time() - a, "seconds")
+            if z.isnan().any():
+                print("z has NaN values, skipping step")
+                raise ValueError("z has NaN values, skipping step") 
+            print("z shape", z.shape)
+
+            if self.args.exp.rms_normalize_y:
+                y_norm= self.apply_RMS_normalization(y)  # apply RMS normalization to y
+            else:
+                y_norm = y
+
+        #rms_est= self.get_log_rms_from_z(z)
+
+        #print("RMS estimated from z", rms_est)
+        #print("RMS of y", 20*torch.log10(torch.sqrt(torch.mean(y**2, dim=(-1), keepdim=True))))
 
 
-
-        print("x",x.shape,"z", z.shape,"y", y.shape)
         y_pred=self.network(x, z)
-        #print("time applying network", time.time() - a, "seconds")
 
-        loss=self.loss_fn(y_pred, y)
 
-        #print("time applying loss function", time.time() - a, "seconds")
+        if "GAN"in self.args.exp.loss.type:
+            # Discriminator step
+            self.optimizer_d.zero_grad()
 
-        loss = loss.mean()
+            # Compute the loss for the discriminator
+            loss_discriminator = self.loss_fn_discriminator(y_pred, y_norm)
+
+            loss_discriminator= loss_discriminator* self.loss_weights["loss_discriminator"] if self.loss_weights is not None and "loss_discriminator" in self.loss_weights else 1.0
+
+
+            loss_discriminator.backward()
+            
+            #apply gradient clipping
+            torch.nn.utils.clip_grad_norm_(self.discriminator.parameters(), 1)
+
+            self.optimizer_d.step()
+
+            self.losses["loss_discriminator"].append( loss_discriminator.mean().detach().cpu().numpy())
+
+
+        loss_dictionary=self.loss_fn(y_pred, y_norm)
+
+        loss=0
+        for key, val in loss_dictionary.items():
+            if torch.isnan(val).any():
+                raise ValueError("Loss value is NaN, skipping step")
+            if self.loss_weights is not None:
+                if key in self.loss_weights:
+                    val = val * self.loss_weights[key]
+            loss += val.mean()  # Take the mean of the loss across the batch
 
         if not torch.isnan(loss).any():
-            loss.backward()
+            self.optimizer.zero_grad()  # Reset gradients for the generator
+            with torch.autograd.set_detect_anomaly(True):
+                loss.backward()
             #print("time applying backward", time.time() - a, "seconds")
 
             if self.args.exp.use_grad_clip:
@@ -578,19 +1327,26 @@ class Trainer():
             #print("optimizer step took", time.time() - a, "seconds")
 
             if self.rank == 0:
-                print("iteration", self.it,"loss", loss.item(),  "time", time.time() - a)
+                print("iteration", self.it,"loss", loss.item(),  "time", time.time() - a, loss_dictionary)
 
                 #print(time.time() - a, "seconds for step")
 
                 if self.args.logging.log:
                     #Log loss here maybe
                    with torch.no_grad():
-                            self.losses.append(loss.detach().cpu().numpy())
+                        for key, val in loss_dictionary.items():
+                            self.losses[key].append(val.mean().detach().cpu().numpy())
                 
+                if self.args.logging.log_audio and self.args.logging.log and self.logged_audio_examples < self.args.logging.num_audio_samples_to_log:
+                    for b in range(y_pred.shape[0]):  # Log only the first sample in the batch
+                            self.log_audio(y_pred[b].unsqueeze(0).detach(), f"pred_wet_train_{self.logged_audio_examples}", it=self.it)  # Just log first sample
+                            self.log_audio(y[b].unsqueeze(0).detach(), f"original_wet_train_{self.logged_audio_examples}", it=self.it)  # Just log first sample
+                            self.log_audio(x[b].unsqueeze(0).detach(), f"original_dry_{self.logged_audio_examples}", it=self.it)  # Just log first sample
+                            self.logged_audio_examples += 1
                 #print("time applying loss logging", time.time() - a, "seconds   ")
 
         else:
-            print("loss is NaN, skipping step")
+            raise ValueError("Loss value is NaN, skipping step")
 
     def update_ema(self):
         """Update exponential moving average of self.network weights."""
@@ -623,20 +1379,22 @@ class Trainer():
 
         #self.losses is a list of losses, we want to report the mean  of the losses
 
-        loss_mean = np.mean(self.losses)
-        self.losses = []  # reset the losses after logging
 
-        self.wandb_run.log({'loss': loss_mean}, step=self.it)
+        for key, val in self.losses.items():
 
-        cossim_mean = np.mean(self.cossims)
-        self.cossims = []  # reset the cossims after logging
-        self.wandb_run.log({'cossim': cossim_mean}, step=self.it)
+            loss_mean = np.mean(val) if len(val) > 0 else 0.0
+            self.wandb_run.log({"loss_"+key: loss_mean}, step=self.it)
+        
+        # Reset the losses for the next logging
+        self.losses = {key: [] for key in self.losses.keys()}
+
 
 
     def validation_step(self):
         """
         Do the heavy logging here. This will be called every 10000 iterations or so
         """
+        raise NotImplementedError("validation_step is not implemented, please implement it")
         for key, val_loader in self.val_set_dict.items():
 
             val_losses= []
@@ -697,11 +1455,16 @@ class Trainer():
         """
         if self.tester is not None:
             if self.latest_checkpoint is not None:
+                print("Loading latest checkpoint", self.latest_checkpoint)
                 self.tester.load_checkpoint(self.latest_checkpoint)
+            else:
+                print("No latest checkpoint found, skipping heavy logging???")
             # setup wandb in tester
             self.tester.do_test(it=self.it)
 
-    def log_audio(self, x, name):
+    def log_audio(self, x, name, it=None):
+        if it is None:
+            it= self.it
         string = name + "_" + self.args.tester.name
 
         #dividing by 2 to avoid clipping
@@ -712,7 +1475,7 @@ class Trainer():
         audio_path = utils_logging.write_audio_file(x, self.args.exp.sample_rate, string, path=self.args.model_dir,
                                                     normalize=False, stereo=True)
         self.wandb_run.log({"audio_" + str(string): wandb.Audio(audio_path, sample_rate=self.args.exp.sample_rate)},
-                           step=self.it)
+                           step=it)
 
     def training_loop(self):
 
@@ -724,7 +1487,12 @@ class Trainer():
         while True:
             #try:
             a= time.time()
+            #try:
             self.train_step()
+            #except Exception as e:
+            #    print("Error during training step:", e)
+            #    print("Skipping this step")
+            #    continue
             #print("time for main step", time.time() - a, "seconds")
 
 
@@ -741,10 +1509,14 @@ class Trainer():
                         self.skip_val = False
                     else:
                         #self.validation_step()
-                        self.heavy_logging()
+                        with torch.no_grad():
+                            self.heavy_logging()
     
                 if self.it > 0 and self.it % self.args.logging.log_interval == 0 and self.args.logging.log:
                     self.easy_logging()
+
+                
+                    
 
 
             #print("sync", self.rank)

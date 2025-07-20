@@ -159,4 +159,3 @@ def loop_based_batch_fft_conv1d(x, h):
         result_b = fft_conv1d(F.pad(x_b, (filter_length - 1, 0)), h_b.flip(-1))
         output[b] = result_b
     return output
-

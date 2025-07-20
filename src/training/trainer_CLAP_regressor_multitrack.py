@@ -475,8 +475,13 @@ class Trainer():
             #stereo to mono of x and y
             if x.shape[1] == 2:
                 x = x.mean(dim=1, keepdim=True).expand(-1, 2, -1)  # expand to [B*N, 1, L] to keep the shape consistent
+            elif x.shape[1] == 1:
+                x= x.expand(-1, 2, -1)  # expand to [B*N, 2, L] to keep the shape consistent
+
             if y.shape[1] == 2:
                 y = y.mean(dim=1, keepdim=True).expand(-1, 2, -1)  # expand to [B*N, 1, L] to keep the shape consistent
+            elif y.shape[1] == 1:
+                y= y.expand(-1, 2, -1)  # expand to [B*N, 2, L] to keep the shape consistent
             
             #RMS normalization of x and y
             x= self.apply_RMS_normalization(x)  # apply RMS normalization to x

@@ -35,7 +35,7 @@ def _main(args):
     train_set = hydra.utils.instantiate(args.dset.train)
     train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=args.exp.batch_size,
                                                num_workers=args.exp.num_workers, pin_memory=True,
-                                               worker_init_fn=worker_init_fn, timeout=0, prefetch_factor=20, collate_fn=lambda x: x)
+                                               worker_init_fn=worker_init_fn, timeout=0, prefetch_factor=10, collate_fn=lambda x: x)
     train_loader = iter(train_loader)
 
     val_set_dict = {}

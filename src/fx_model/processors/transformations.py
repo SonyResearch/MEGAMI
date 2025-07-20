@@ -52,8 +52,17 @@ class MinMax(nn.Module):
 
 class UniLossLess(nn.Module):
     def forward(self, x):
-        tri = x.triu(1)
-        return torch.linalg.matrix_exp(tri - tri.T)
+        if x.dim() ==2:
+            tri = x.triu(1)
+            return torch.linalg.matrix_exp(tri - tri.T)
+        elif x.dim() == 3:
+            B, N,N= x.shape
+            out= torch.zeros_like(x)
+            for i in range(B):
+                out[i]=torch.linalg.matrix_exp(x[i].triu(1) - x[i].triu(1).T)
+            return out
+
+
     def right_inverse(self, y):
         #copilot generated this...
         #tri = y.triu(1)

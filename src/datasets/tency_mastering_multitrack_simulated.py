@@ -307,10 +307,23 @@ class TencyMastering_Test(torch.utils.data.Dataset):
 
                 x_dry_long = x_dry_long.mean(0, keepdim=True)
 
+                if not self.only_dry:
+                    out= load_audio(str(wet_file), stereo=self.stereo)
+                    if out is None:
+                        skip_iteration = True
+                        print("Could not load wet audio file: {}".format(wet_file))
+                        continue
+                    x_wet_long, fs=out
+                    assert fs==self.fs, "wrong sampling rate: {}".format(fs)
+
+
                 if i==0:
                     x_all=torch.zeros((len(dry_files),2, x_dry_long.shape[-1]), dtype=torch.float32)
                     x_all[i]=x_dry_long
                     x_sum=x_dry_long
+                    if not self.only_dry:
+                        x_all_wet=torch.zeros((len(dry_files),2, x_dry_long.shape[-1]), dtype=torch.float32)
+                        x_all_wet[i]=x_wet_long
                 else:
                     if x_dry_long.shape[-1]<x_all.shape[-1]:
                         padding = x_all.shape[-1] - x_dry_long.shape[-1]
@@ -321,6 +334,16 @@ class TencyMastering_Test(torch.utils.data.Dataset):
 
                     x_all[i] = x_dry_long
                     x_sum+=x_dry_long
+
+                    if not self.only_dry:
+                        if x_wet_long.shape[-1]<x_all_wet.shape[-1]:
+                            padding = x_all_wet.shape[-1] - x_wet_long.shape[-1]
+                            x_wet_long = torch.nn.functional.pad(x_wet_long, (0, padding))
+                        elif x_wet_long.shape[-1]>x_all_wet.shape[-1]:
+                            #pas
+                            x_wet_long = x_wet_long[..., :x_all_wet.shape[-1]]
+
+                        x_all_wet[i] = x_wet_long
                     
             if not self.only_dry:
                 alignment_file=Path(dry_files[0]).parent.parent / "alignment.pickle"

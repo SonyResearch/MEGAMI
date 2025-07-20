@@ -31,6 +31,30 @@ def load_fx_encoder_plusplus(model_args, device, *args, **kwargs):
 
     return lambda x: effects_encoder_fn(x)
 
+def load_fx_encoder_plusplus_2048(model_args, device, *args, **kwargs):
+    from utils.feature_extractors.fx_encoder_plus_plus import load_model 
+
+    assert model_args is not None, "model_args must be provided for fx_encoder type"
+
+    ckpt_path=model_args.ckpt_path
+
+    model=load_model(
+        model_path=ckpt_path,
+        device=device,
+    )
+
+    def effects_encoder_fn(x):
+        assert x.ndim == 3, f"Input tensor x must be 2D, got {x.ndim}D"
+        assert x.shape[1] == 2, f"Input tensor x must have 2 channels, got {x.shape[1]} channels"
+
+        emb=model.fx_encoder(x)
+        emb=emb["embedding"]  # Extract the embedding from the dictionary
+
+        return emb
+        
+
+    return lambda x: effects_encoder_fn(x)
+
 def load_CLAP(model_args, device, *args, **kwargs):
 
     #original_path = sys.path.copy()

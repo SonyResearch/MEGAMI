@@ -6,25 +6,28 @@ tester:
 sampler:
   _target_: 'inference.sampler_euler_heun.SamplerEulerHeun'
 
-modes: ["paired","simulated"] #modes to test
+modes: ["paired"] #modes to test
 
 
 compute_metrics: True #if true, the metrics will be computed after sampling
 
 metrics:
-  - "histogram-features"
   - "kad-AFxRep-mid"
   - "kad-AFxRep-side"
-  - "pairwise-spectral"
-  - "pairwise-panning"
-  - "pairwise-dynamic"
-  - "pairwise-loudness"
+  - "pairwise-IM-mss-lr"
+  - "pairwise-IM-mss-ms"
   - "pairwise-mss-lr"
   - "pairwise-mss-ms"
   - "pairwise-mldr-lr"
   - "pairwise-mldr-ms"
   - "pairwise-AFxRep-mid"
   - "pairwise-AFxRep-side"
+  - "pairwise-fxenc++"
+  - "pairwise-logrms"
+  - "pairwise-crestfactor"
+  - "pairwise-logspread"
+  - "pairwise-stereowidth"
+  - "pairwise-stereoimbalance"
 
 checkpoint: None
 
@@ -68,16 +71,37 @@ histogram_features_args:
   report_all_pairwise_metrics: True #if True, all pairwise metrics will be reported in the histogram features figure
 
 fx_encoder_plusplus_args:
-  distance_type": "cosine"
-  ckpt_path": "/home/eloi/projects/project_mfm_eloi/src/utils/feature_extractors/ckpt/fxenc_plusplus_default.pt"
+  distance_type: "cosine"
+  ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/utils/feature_extractors/ckpt/fxenc_plusplus_default.pt"
 
+KAD_args: 
+  do_PCA_figure: True #if True, the FAD figure will be computed
+  do_TSNE_figure: True #if True, the FAD figure will be computed
+  kernel: "gaussian" #kernel to use for the KAD metric
+  PCA_fit_mode: "target"
+
+
+logrms_args:
+  distance_type: "l1"
+
+crestfactor_args:
+  distance_type: "l1"
+
+stereowidth_args:
+  distance_type: "l1"
+
+stereoimbalance_args:
+  distance_type: "l1"
+
+logspread_args:
+  distance_type: "l1"
 
 #logging configuration
 wandb:
   use: True
   entity: "eloimoliner"
   project: "project_test_04_06"
-  num_examples_to_log: 4
+  num_examples_to_log: 6
   log_every: 10
-  run_name: "test-conditional-dry-vocals-diffSTFT"
+  run_name: "mapper"
   tags: Null

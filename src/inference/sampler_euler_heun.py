@@ -23,6 +23,7 @@ class SamplerEulerHeun(Sampler):
             self,
             shape,  # observations (lowpssed signal) Tensor with shape ??
             cond=None,
+            embedding=None,  # fixed condition, e.g. the input signal
             cfg_scale=1.0,
             device=None,  # device
             apply_inverse_transform=True  # whether to apply inverse transform
@@ -32,6 +33,10 @@ class SamplerEulerHeun(Sampler):
 
         print("cfg_scale", cfg_scale)
         self.cfg_scale = cfg_scale
+
+        if embedding is not None:
+            self.diff_params.save_embedding(self.model, self.cond, embedding)
+
 
         return self.predict(shape, device, apply_inverse_transform=apply_inverse_transform)
 

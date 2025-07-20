@@ -1,4 +1,5 @@
 
+
 import torch.nn.functional as F
 import pandas as pd
 import pyloudnorm as pyln
@@ -18,7 +19,7 @@ import pickle
 
 from tqdm import tqdm
 
-from utils.data_utils import taxonomy2track
+from utils.data_utils import taxonomy2track, efficient_roll
 
 
 def trackname2taxonomy(tracks):
@@ -164,7 +165,6 @@ class TencyMastering_Test(torch.utils.data.Dataset):
         tracks="all",
         path_csv=None,
         only_dry=False, #if True, only dry files are used, if False, both dry and wet files are used
-        random_order=False, #if True, the order of the samples is randomized
         ):
 
         super().__init__()
@@ -179,7 +179,6 @@ class TencyMastering_Test(torch.utils.data.Dataset):
 
         self.only_dry=only_dry
 
-        self.random_order=random_order
 
 
         self.normalize_mode=normalize_params.normalize_mode
@@ -359,9 +358,12 @@ class TencyMastering_Test(torch.utils.data.Dataset):
             alignment_file=Path(dry_files[0]).parent.parent / "alignment.pickle"
             alignment_data = pickle.load(open(alignment_file, "rb"))
             dry_align=alignment_data.get("dry_alignment",0)
+            wet_align=alignment_data.get("multi_alignment",0)
 
-            x_all=torch.roll(x_all, shifts=int(dry_align), dims=-1)
-            x_sum= torch.roll(x_sum, shifts=int(dry_align), dims=-1)
+            x_all=efficient_roll(x_all, -int(dry_align), dims=-1)
+            x_sum= efficient_roll(x_sum,-int(dry_align), dims=-1)
+            if not self.only_dry:
+                x_all_wet=efficient_roll(x_all_wet, -int(wet_align), dims=-1)
             
             max_length = x_sum.size(-1)
             max_length = (max_length + self.segment_length - 1) // self.segment_length * self.segment_length
@@ -416,18 +418,13 @@ class TencyMastering_Test(torch.utils.data.Dataset):
                     else:
                         pass
 
-                if self.random_order:
-                    #randomly shuffle the tracks
-                    indices = torch.randperm(x_all_i.shape[0])
-                    x_all_i=x_all_i[indices]
-                    if not self.only_dry:
-                        x_all_wet_i=x_all_wet_i[indices]
-                    taxonomies_selected = [taxonomies_selected[i] for i in indices]
+                
+                for i in range(len(taxonomies_selected)):
+                    if self.only_dry:
+                        self.test_samples.append(( x_all_i[i])) 
+                    else:
+                        self.test_samples.append(( x_all_i[i],  x_all_wet_i[i])) 
 
-                if self.only_dry:
-                    self.test_samples.append(( x_all_i, None,   taxonomies_selected, path)) 
-                else:
-                    self.test_samples.append(( x_all_i,  x_all_wet_i, taxonomies_selected, path)) 
                 counter+=1
 
             if skip_iteration:
@@ -461,7 +458,6 @@ class TencyMastering(torch.utils.data.IterableDataset):
         effect_randomizer=None,
         tracks="all",
         path_csv=None,
-        random_order=False,
         random_polarity=False,
         random_shift=1024, #shift in samples to apply to the audio, if random_shift is None, no shift is applied
         only_dry=False, #if True, only dry files are used, if False, both dry and wet files are used
@@ -473,7 +469,6 @@ class TencyMastering(torch.utils.data.IterableDataset):
         #np.random.seed(seed)
         #random.seed(seed)
 
-        self.random_order=random_order
         #self.random_num_tracks=random_num_tracks
 
         self.random_polarity=random_polarity
@@ -533,6 +528,8 @@ class TencyMastering(torch.utils.data.IterableDataset):
         self.df=pd.read_csv(self.path_csv)
 
         #self.df= self.df[self.df['cluster'].isin(clusters)]
+        self.audio_length_cache = {}
+        self.path_files_cache = {}
 
 
     def __iter__(self):
@@ -553,7 +550,11 @@ class TencyMastering(torch.utils.data.IterableDataset):
             dry_path=os.path.join(path, "dry_multi")
             wet_path=os.path.join(path, "multi")
 
-            files= glob.glob(os.path.join(dry_path, "*.wav"))
+            if dry_path in self.path_files_cache.keys():
+                files= self.path_files_cache[dry_path]
+            else:
+                files= glob.glob(os.path.join(dry_path, "*.wav"))
+                self.path_files_cache[dry_path] = glob.glob(os.path.join(dry_path, "*.wav"))
 
             if len(files)==0:
                 print("no dry files found in", dry_path)
@@ -608,30 +609,72 @@ class TencyMastering(torch.utils.data.IterableDataset):
             dry_frames=[]
 
             for i in range(len(dry_files)):
-                dry_duration, dry_total_frames, dry_samplerate=get_audio_length(str(dry_files[i]))
+                if str(dry_files[i]) in self.audio_length_cache.keys():
+                    #print("dry file FUND in cache", dry_files[i])
+                    dry_duration, dry_total_frames, dry_samplerate = self.audio_length_cache[str(dry_files[i])]
+                else:
+                    #print("dry file not in cache", dry_files[i])
+                    dry_duration, dry_total_frames, dry_samplerate=get_audio_length(str(dry_files[i]))
+                    self.audio_length_cache[str(dry_files[i])] = (dry_duration, dry_total_frames, dry_samplerate)
+
                 total_frames= min(total_frames, dry_total_frames)
                 dry_frames.append(dry_total_frames)
 
             if not self.only_dry:
                 wet_frames=[]
                 for i in range(len(wet_files)):
-                    wet_duration, wet_total_frames, wet_samplerate=get_audio_length(str(wet_files[i]))
+                    if str(wet_files[i]) in self.audio_length_cache.keys():
+                        #print("wet file in cache", wet_files[i])
+                        wet_duration, wet_total_frames, wet_samplerate = self.audio_length_cache[str(wet_files[i])]
+                    else:
+                        #print("wet file not in cache", wet_files[i])
+                        wet_duration, wet_total_frames, wet_samplerate=get_audio_length(str(wet_files[i]))
+                        self.audio_length_cache[str(wet_files[i])] = (wet_duration, wet_total_frames, wet_samplerate)
                     total_frames= min(total_frames, wet_total_frames)
                     wet_frames.append(wet_total_frames)
 
+                alignment_file=Path(dry_files[0]).parent.parent / "alignment.pickle"
+                alignment_data = pickle.load(open(alignment_file, "rb"))
+                dry_align=alignment_data.get("dry_alignment",0)
+                wet_align=alignment_data.get("multi_alignment",0)
 
-            start=np.random.randint(0,total_frames-self.segment_length)
-            end=start+ self.segment_length
+                # Calculate the valid range for the start index considering alignments
+                max_dry_offset = max(0, dry_align)
+                max_wet_offset = max(0, wet_align)
+                min_dry_offset = min(0, dry_align)
+                min_wet_offset = min(0, wet_align)
+    
+                # Ensure we have enough samples at the beginning and end
+                valid_start_min = max(0, -min_dry_offset, -min_wet_offset)
+                valid_end_max = min(total_frames, total_frames - max_dry_offset, total_frames - max_wet_offset)
+    
+                # Ensure we have enough space for the segment
+                valid_range = valid_end_max - valid_start_min - self.segment_length
+                if valid_range <= 0:
+                    # Handle the case where the segment can't fit with alignments
+                    # Either reduce segment length or use padding
+                    print(f"Cannot fit segment of length {self.segment_length} with alignments {dry_align}, {wet_align}")
+                    continue
+    
+                # Choose a random start within the valid range
+                start = valid_start_min + np.random.randint(0, valid_range)
+                end = start + self.segment_length
+    
+
+                #print("valid_start_min", valid_start_min, "valid range", valid_range,"start", start, "end", end, "total_frames", total_frames, "segment_length", self.segment_length, "dry_align", dry_align, "wet_align", wet_align)
+    
+                # Apply alignments
+                start_dry = start + dry_align
+                end_dry = start_dry + self.segment_length
+    
+                start_wet = start + wet_align
+                end_wet = start_wet + self.segment_length
+
+            else:
+                start_dry=np.random.randint(0,total_frames-self.segment_length)
+                end_dry=start_dry+ self.segment_length
 
 
-            #x_all=torch.zeros((len(dry_files),2, self.segment_length), dtype=torch.float32)
-            #x_all_wet=torch.zeros((len(dry_files),2, self.segment_length), dtype=torch.float32)
-            ##x_sum=torch.zeros((2, self.segment_length), dtype=torch.float32)
-            #x_sum_wet=torch.zeros((2, self.segment_length), dtype=torch.float32)
-
-            #first randomize order of the files
-
-            #randomly shuffle the tracks
             order = np.random.permutation(len(dry_files))
             dry_files = [dry_files[i] for i in order]
             if not self.only_dry:
@@ -645,7 +688,8 @@ class TencyMastering(torch.utils.data.IterableDataset):
 
             for i, (dry_file, wet_file) in enumerate(zip(dry_files, wet_files)):
 
-                out=load_audio(str(dry_file), start, end, stereo=self.stereo)
+                #print("dry_file", dry_file, "wet_file", wet_file, i, "of", len(dry_files), "start", start, "end", end)
+                out=load_audio(str(dry_file), start_dry, end_dry, stereo=self.stereo)
                 if out is None:
                     skip_iteration = True
                     print("Could not load dry audio file: {}".format(dry_file))
@@ -666,7 +710,7 @@ class TencyMastering(torch.utils.data.IterableDataset):
                     if self.random_shift is not None:
                         if self.random_shift > 0:
                             shift = np.random.randint(-self.random_shift, self.random_shift)
-                            start_wet = start + shift
+                            start_wet = start_wet + shift
                             end_wet = start_wet + self.segment_length
                             if start_wet < 0:
                                 start_wet = max(0, start_wet)

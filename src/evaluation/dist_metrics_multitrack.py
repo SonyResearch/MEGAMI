@@ -1,4 +1,5 @@
 
+import math
 from numpy.lib.scimath import sqrt as scisqrt
 from scipy import linalg
 import numpy as np  
@@ -8,7 +9,7 @@ from importlib import import_module
 import torch
 
 
-from evaluation.feature_extractors import load_AFxRep, load_fx_encoder, load_fx_encoder_plusplus, load_MERT, load_CLAP
+from evaluation.feature_extractors import load_AFxRep, load_fx_encoder, load_fx_encoder_plusplus, load_MERT, load_CLAP, load_fx_encoder_plusplus_2048
 
 from utils.log import make_PCA_figure
 
@@ -208,7 +209,44 @@ class DistMetric:
             assert self.model_args is not None, "model_args must be provided for CLAP type"
 
             self.feat_extractor = load_CLAP(self.model_args, self.device)
+        elif self.type == "fxencAFv2-fxenc++":
+            self.model_args= kwargs.get("fx_encoder_plusplus_args", None)
+            assert self.model_args is not None, "model_args must be provided for fxencAFv2-fxenc++ type"
 
+            self.distance_type=self.model_args.distance_type
+
+            self.feat_extractor = load_fx_encoder_plusplus(self.model_args, self.device)
+        elif self.type == "fxencAFv2-AF" or self.type == "fxenc2048AFv2-AF" or self.type == "fxenc2048AFv3-AF":
+
+            from utils.AF_features_embedding_v2 import AF_fourier_embedding
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def feat_extracfor_fn(x):
+                z, _ = AFembedding.encode(x)
+                return z
+
+            self.feat_extractor = feat_extracfor_fn
+        elif self.type == "fxenc2048AFv2-fxenc++":
+            self.model_args= kwargs.get("fx_encoder_plusplus_args", None)
+            assert self.model_args is not None, "model_args must be provided for fxencAFv2-fxenc++ type"
+
+            self.distance_type=self.model_args.distance_type
+
+            self.feat_extractor = load_fx_encoder_plusplus_2048(self.model_args, self.device)
+
+        elif self.type == "fxenc2048AFv3-fxenc++":
+            self.model_args= kwargs.get("fx_encoder_plusplus_args", None)
+            assert self.model_args is not None, "model_args must be provided for fxencAFv2-fxenc++ type"
+
+            self.distance_type=self.model_args.distance_type
+            fxencoder = load_fx_encoder_plusplus_2048(self.model_args, self.device)
+
+            def feat_extractor_fn(x):
+                z= fxencoder(x)
+                z=torch.nn.functional.normalize(z, dim=-1, p=2)  # normalize to unit variance
+                return z
+            
+            self.feat_extractor = feat_extractor_fn
 
         else:
             raise ValueError(f"Unknown type: {self.type}. Supported types: fx_encoder, fx_encoder_plusplus, AFxRep-mid, AFxRep-side, AFxRep")
@@ -251,44 +289,56 @@ class DistMetric:
         import matplotlib.pyplot as plt
         from sklearn.manifold import TSNE   
 
-        print("cluster", dict_cluster)
+        #print("cluster", dict_cluster)
 
         y_values = {}
         y_hat_values = {}
-        clusters={}
-        clusters_hat= {}
+        if dict_cluster is not None:
+            clusters={}
+            clusters_hat= {}
         for key, track_name in self.taxonomy_ref.items():
 
-            print("searching for key:", key, "track_name:", track_name)
+            #print("searching for key:", key, "track_name:", track_name)
 
             y_values[track_name] = []
-            clusters[track_name] = []
+            if dict_cluster is not None:
+                clusters[track_name] = []
             for k in range(len(dict_features_y.keys())):
                 index = [i for i, tax_id in enumerate(dict_taxonomy[k]) if tax_id == key]
+                print("taxonomy",k, dict_taxonomy[k])
                 if index:  # If any matches were found
                     # Select the corresponding rows from dict_features_y[k]
                     selected_features = dict_features_y[k][index]
                     y_values[track_name].append(selected_features)
 
-                    clusters[track_name].append(dict_cluster[k].unsqueeze(0))
+                    if dict_cluster is not None:
+                        clusters[track_name].append(dict_cluster[k].unsqueeze(0))
 
-
+            if not y_values[track_name]:
+                print(f"Warning: No features found for track {track_name} with key {key}. Skipping this track.")
+                #remove the track from the dictionaries
+                y_values.pop(track_name, None)
+                continue
 
             y_values[track_name]=torch.cat(y_values[track_name], dim=0)
             y_values[track_name]=torch.nan_to_num(y_values[track_name], nan=0)
 
             #print(clusters[track_name])
-            clusters[track_name]=torch.cat(clusters[track_name], dim=0)
+            if dict_cluster is not None:    
+                clusters[track_name]=torch.cat(clusters[track_name], dim=0)
 
             y_hat_values[track_name] = []
-            clusters_hat[track_name] = []
+            if dict_cluster is not None:
+                clusters_hat[track_name] = []
+
             for k in range(len(dict_features_y_hat.keys())):
                 index = [i for i, tax_id in enumerate(dict_taxonomy[k]) if tax_id == key]
                 if index:  # If any matches were found
                     # Select the corresponding rows from dict_features_y[k]
                     selected_features = dict_features_y_hat[k][index]
                     y_hat_values[track_name].append(selected_features)
-                    clusters_hat[track_name].append(dict_cluster[k].unsqueeze(0))
+                    if dict_cluster is not None:
+                        clusters_hat[track_name].append(dict_cluster[k].unsqueeze(0))
                 #else:
                 #    y_hat_values[track_name].append(None)  # Append zeros if no match found
 
@@ -297,7 +347,8 @@ class DistMetric:
             y_hat_values[track_name]=torch.nan_to_num(y_hat_values[track_name], nan=0)
 
             #print(clusters_hat[track_name])
-            clusters_hat[track_name]=torch.cat(clusters_hat[track_name], dim=0)
+            if dict_cluster is not None:
+                clusters_hat[track_name]=torch.cat(clusters_hat[track_name], dim=0)
             
         if self.pca is None:
             self.pca= {}
@@ -350,77 +401,67 @@ class DistMetric:
         import matplotlib.pyplot as plt
         from sklearn.decomposition import PCA
 
-        print("cluster", dict_cluster)
+        #print("cluster", dict_cluster)
 
         y_values = {}
         y_hat_values = {}
-        clusters={}
-        clusters_hat= {}
+        if dict_cluster is not None:
+            clusters={}
+            clusters_hat= {}
+
         for key, track_name in self.taxonomy_ref.items():
 
-            print("searching for key:", key, "track_name:", track_name)
+            #print("searching for key:", key, "track_name:", track_name)
 
             y_values[track_name] = []
-            clusters[track_name] = []
+            if dict_cluster is not None:
+                clusters[track_name] = []
             for k in range(len(dict_features_y.keys())):
+                print("taxonomy",k, dict_taxonomy[k])
                 index = [i for i, tax_id in enumerate(dict_taxonomy[k]) if tax_id == key]
                 if index:  # If any matches were found
                     # Select the corresponding rows from dict_features_y[k]
                     selected_features = dict_features_y[k][index]
                     y_values[track_name].append(selected_features)
 
-                    clusters[track_name].append(dict_cluster[k].unsqueeze(0))
+                    if dict_cluster is not None:
+                        clusters[track_name].append(dict_cluster[k].unsqueeze(0))
 
-                #else:
-                #    y_values[track_name].append(None)  # Append zeros if no match found
-            #for i in range(len(y_values[track_name])):
-            #    if y_values[track_name][i] is None:
-            #        print(f"Warning: No features found for track {track_name} at index {i}")
-            #    print("y_values[track_name][i] shape:", y_values[track_name][i].shape)
+            #check if y_values[track_name] is empty
+            if not y_values[track_name]:
+                print(f"Warning: No features found for track {track_name} with key {key}. Skipping this track.")
+                #remove the track from the dictionaries
+                y_values.pop(track_name, None)
+                continue
 
             y_values[track_name]=torch.cat(y_values[track_name], dim=0)
             y_values[track_name]=torch.nan_to_num(y_values[track_name], nan=0)
 
-            #print(clusters[track_name])
-            clusters[track_name]=torch.cat(clusters[track_name], dim=0)
+            if dict_cluster is not None:
+                clusters[track_name]=torch.cat(clusters[track_name], dim=0)
 
             y_hat_values[track_name] = []
-            clusters_hat[track_name] = []
+            if dict_cluster is not None:    
+                clusters_hat[track_name] = []
+
             for k in range(len(dict_features_y_hat.keys())):
                 index = [i for i, tax_id in enumerate(dict_taxonomy[k]) if tax_id == key]
                 if index:  # If any matches were found
                     # Select the corresponding rows from dict_features_y[k]
                     selected_features = dict_features_y_hat[k][index]
                     y_hat_values[track_name].append(selected_features)
-                    clusters_hat[track_name].append(dict_cluster[k].unsqueeze(0))
-                #else:
-                #    y_hat_values[track_name].append(None)  # Append zeros if no match found
-
+                    if dict_cluster is not None:
+                        clusters_hat[track_name].append(dict_cluster[k].unsqueeze(0))
 
             y_hat_values[track_name]=torch.cat(y_hat_values[track_name], dim=0)
             y_hat_values[track_name]=torch.nan_to_num(y_hat_values[track_name], nan=0)
 
-            #print(clusters_hat[track_name])
-            clusters_hat[track_name]=torch.cat(clusters_hat[track_name], dim=0)
+            if dict_cluster is not None:
+                clusters_hat[track_name]=torch.cat(clusters_hat[track_name], dim=0)
             
-
-        #if dict_cluster is not None:
-        #    clusters= list(dict_cluster.values())
-        #    clusters = [c.unsqueeze(0) if c.dim() == 0 else c for c in clusters]
-        #    clusters = torch.cat(clusters, dim=0)
-
-        #    #print(clusters)
-        #    #print("Clusters shape:", clusters.shape)
-            #print("Number of unique clusters:", len(torch.unique(clusters)), "clusters",torch.unique(clusters))
-
-        #    #check different clusters (0,1,2,3...)
-        #    assert len(torch.unique(clusters)) <= 2, "Only two clusters are supported for PCA visualization, no more no less"
-        #    C0= clusters == 0
-        #    C1= clusters == 1
 
         if self.pca is None:
             self.pca= {}
-        
 
         pca_result = {}
         pca_result_hat = {}
@@ -443,7 +484,7 @@ class DistMetric:
             pca_result[k]=self.pca[k].transform(y_values[k].cpu().numpy())
             pca_result_hat[k] = self.pca[k].transform(y_hat_values[k].cpu().numpy())
 
-            print(pca_result[k].shape, pca_result_hat[k].shape)
+            #print(pca_result[k].shape, pca_result_hat[k].shape)
 
 
             if dict_cluster is not None:
@@ -469,7 +510,7 @@ class DistMetric:
                 #data_dict["x"] = pca_result_x
 
 
-            print("data dict", data_dict[k])
+            #print("data dict", data_dict[k])
 
             figs[k]= make_PCA_figure(data_dict[k], title=self.type + " PCA; track: "+k)
 
@@ -615,6 +656,11 @@ class KADFeatures(DistMetric):
                     y_values[track_name].append(selected_features)
                 #else:
                 #    y_values[track_name].append(None)  # Append zeros if no match found
+            if not y_values[track_name]:
+                print(f"Warning: No features found for track {track_name} with key {key}. Skipping this track.")
+                #remove the track from the dictionaries
+                y_values.pop(track_name, None)
+                continue
 
             y_values[track_name]=torch.cat(y_values[track_name], dim=0)
             y_values[track_name]=torch.nan_to_num(y_values[track_name], nan=0)
@@ -691,15 +737,56 @@ class KADFeatures(DistMetric):
                 embed= dict_p_hat[key]
                 embed=torch.tensor(embed).to(self.device)
 
-                embed_mid, embed_side = torch.chunk(embed, 2, dim=-1)
+                if "AFxRep" in self.type:
+                    embed_mid, embed_side = torch.chunk(embed, 2, dim=-1)
 
-                if self.type== "AFxRep-mid":
-                    p_hat= embed_mid
-                elif self.type== "AFxRep-side":
-                    p_hat= embed_side
-                elif self.type== "AFxRep":
-                    p_hat= embed
-    
+                    if self.type== "AFxRep-mid":
+                        p_hat= embed_mid
+                    elif self.type== "AFxRep-side":
+                        p_hat= embed_side
+                    elif self.type== "AFxRep":
+                        p_hat= embed
+                elif "fxencAFv2" in self.type:
+                    
+                    embed=embed*math.sqrt(embed.shape[-1])  # Scale the embedding
+
+                    embed_fxenc=embed[...,:128]/ math.sqrt(128)  # Scale the first 128 dimensions
+                    embed_AF=embed[...,128:]/ math.sqrt(64)  # Scale the last 128 dimensions
+
+
+                    if self.type == "fxencAFv2-fxenc++":
+                        p_hat= embed_fxenc
+                        #print("p_hat",p_hat.shape, p_hat.std(), "l2 norm:", p_hat.norm(p=2, dim=-1).mean())
+                    elif self.type == "fxencAFv2-AF":
+                        p_hat= embed_AF
+                        #print("p_hat",p_hat.shape, p_hat.std(), "l2 norm:", p_hat.norm(p=2, dim=-1).mean())
+                elif "fxenc2048AFv2" in self.type:
+                    embed=embed*math.sqrt(embed.shape[-1])  # Scale the embedding
+
+                    embed_fxenc=embed[...,:2048]*1.7  # Scale the first 128 dimensions
+                    embed_AF=embed[...,2048:]/ math.sqrt(64)  # Scale the last 128 dimensions
+
+
+                    if self.type == "fxenc2048AFv2-fxenc++":
+                        p_hat= embed_fxenc
+                        #print("p_hat",p_hat.shape, p_hat.std(), "l2 norm:", p_hat.norm(p=2, dim=-1).mean())
+                    elif self.type == "fxenc2048AFv2-AF":
+                        p_hat= embed_AF
+                        #print("p_hat",p_hat.shape, p_hat.std(), "l2 norm:", p_hat.norm(p=2, dim=-1).mean())
+                elif "fxenc2048AFv3" in self.type:
+
+                    embed=embed*math.sqrt(embed.shape[-1])  # Scale the embedding
+
+                    embed_fxenc=embed[...,:2048]/ math.sqrt(2048)  # Scale the first 128 dimensions
+                    embed_AF=embed[...,2048:]/ math.sqrt(64)  # Scale the last 128 dimensions
+
+
+                    if self.type == "fxenc2048AFv3-fxenc++":
+                        p_hat= embed_fxenc
+                        #print("p_hat",p_hat.shape, p_hat.std(), "l2 norm:", p_hat.norm(p=2, dim=-1).mean())
+                    elif self.type == "fxenc2048AFv3-AF":
+                        p_hat= embed_AF
+                        #print("p_hat",p_hat.shape, p_hat.std(), "l2 norm:", p_hat.norm(p=2, dim=-1).mean())
     
                 n, c, d=y.shape
     
@@ -710,6 +797,7 @@ class KADFeatures(DistMetric):
 
                 with torch.no_grad():
                     feat_y= self.feat_extractor(y)
+                    #print("feat_y shape:", feat_y.shape, feat_y.std(), "l2 norm:", feat_y.norm(p=2, dim=-1).mean())
                     #feat_x= self.feat_extractor(x)
     
                 assert p_hat.shape == feat_y.shape, f"Shape mismatch for key {key}: {p_hat.shape} vs {feat_y.shape}"
@@ -825,6 +913,18 @@ def metric_factory(metric_name, sample_rate, *args, **kwargs):
         return KADFeatures(*args, **kwargs, type="AFxRep-side", sample_rate=sample_rate)
     elif metric_name == "kad-AFxRep-side-multitrack":
         return KADFeatures(*args, **kwargs, type="AFxRep-mid", sample_rate=sample_rate)
+    elif metric_name == "kad-fxencAFv2-fxenc++-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxencAFv2-fxenc++", sample_rate=sample_rate)
+    elif metric_name == "kad-fxencAFv2-AF-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxencAFv2-AF", sample_rate=sample_rate)
+    elif metric_name == "kad-fxenc2048AFv2-fxenc++-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxenc2048AFv2-fxenc++", sample_rate=sample_rate)
+    elif metric_name == "kad-fxenc2048AFv2-AF-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxenc2048AFv2-AF", sample_rate=sample_rate)
+    elif metric_name == "kad-fxenc2048AFv3-fxenc++-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxenc2048AFv3-fxenc++", sample_rate=sample_rate)
+    elif metric_name == "kad-fxenc2048AFv3-AF-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxenc2048AFv3-AF", sample_rate=sample_rate)
     elif metric_name == "kad-class-fx_encoder-multitrack":
         return KADFeatures(*args, **kwargs, type="fx_encoder", sample_rate=sample_rate, classwise=True)
     elif metric_name == "kad-class-AFxRep-multitrack":
@@ -833,6 +933,18 @@ def metric_factory(metric_name, sample_rate, *args, **kwargs):
         return KADFeatures(*args, **kwargs, type="AFxRep-side", sample_rate=sample_rate, classwise=True)
     elif metric_name == "kad-class-AFxRep-side-multitrack":
         return KADFeatures(*args, **kwargs, type="AFxRep-mid", sample_rate=sample_rate, classwise=True)
+    elif metric_name == "kad-class-fxencAFv2-fxenc++-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxencAFv2-fxenc++", sample_rate=sample_rate, classwise=True)
+    elif metric_name == "kad-class-fxencAFv2-AF-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxencAFv2-AF", sample_rate=sample_rate, classwise=True)
+    elif metric_name == "kad-class-fxenc2048AFv2-fxenc++-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxenc2048AFv2-fxenc++", sample_rate=sample_rate, classwise=True)
+    elif metric_name == "kad-class-fxenc2048AFv2-AF-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxenc2048AFv2-AF", sample_rate=sample_rate, classwise=True)
+    elif metric_name == "kad-class-fxenc2048AFv3-fxenc++-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxenc2048AFv3-fxenc++", sample_rate=sample_rate, classwise=True)
+    elif metric_name == "kad-class-fxenc2048AFv3-AF-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxenc2048AFv3-AF", sample_rate=sample_rate, classwise=True)
     else:
         raise ValueError(f"Unknown metric: {metric_name}")
 

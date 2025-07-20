@@ -1,0 +1,5 @@
+
+_target_: "networks.MLP_CLAP_regressor.MLP_CLAP_regressor"
+
+dim: 2112
+hidden_dim: 2048

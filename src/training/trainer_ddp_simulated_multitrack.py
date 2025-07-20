@@ -341,7 +341,6 @@ class Trainer():
             error: the error tensor with shape [batch, audio_len]
             sigma: the sigma tensor with shape [batch]
         """
-        raise ValueError("you should not be here")
         # sigma values are ranged between self.args.diff_params.sigma_min and self.args.diff_params.sigma_max. We need to quantize the values of sigma into 10 logarithmically spaced bins between self.args.diff_params.sigma_min and self.args.diff_params.sigma_max
         torch.nan_to_num(error)  # not tested might crash
         error_mean= error.mean()

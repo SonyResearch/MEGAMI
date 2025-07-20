@@ -169,4 +169,3 @@ def compexp_functional(
         lookahead_func=lookahead_func,
     ).view(*x.shape)
 
-

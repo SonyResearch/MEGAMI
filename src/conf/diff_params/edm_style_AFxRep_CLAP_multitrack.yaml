@@ -30,6 +30,22 @@ CLAP_args:
   ckpt_path: "/data5/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
   distance_type: "cosine"
   normalize: True #if True, the features will be normalized
+  use_adaptor: False #if True, the features will be adapted to the CLAP space
+  adaptor_checkpoint: "/data5/eloi/experiments/CLAP_regressor_multitrack/MLP_CLAP_regressor-20000.pt"
+  adaptor_type: "MLP_CLAP_regressor"
+  add_noise: False #if True, the features will be augmented with  noise
+  noise_sigma: 0.022 #sigma of the  noise to
+
+AFxRep_args:
+  distance_type: "cosine" #distance metric to use for the AFxRep
+  ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/tmp/afx-rep.ckpt"
+
+fx_encoder_plusplus_args:
+  distance_type: "cosine"
+  ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/utils/feature_extractors/ckpt/fxenc_plusplus_default.pt"
+
+context_signal: "dry"
+
 
 apply_fxnormaug: False
 fxnormaug_train:

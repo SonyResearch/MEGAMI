@@ -119,7 +119,7 @@ class SDE():
         return cskip * xn + cout * net(cin * xn, cnoise)  #this will crash because of broadcasting problems, debug later!
 
 
-    def prepare_train_preconditioning(self, x, t,n=None, *args, **kwargs):
+    def prepare_train_preconditioning(self, x, t, x_2, n=None, *args, **kwargs):
         #weight=self.lambda_w(sigma)
         #Eloi: Is calling the denoiser here a good idea? Maybe it would be better to apply directly the preconditioning as in the paper, even though Karras et al seem to do it this way in their code
         #Jm: I don't mind that preconditioning form actually, makes the loss also more normalized and easier to compare in between runs/SDEs i.m.o.
@@ -144,7 +144,7 @@ class SDE():
 
         target = 1/cout * (x - cskip * x_perturbed)
 
-        return cin * x_perturbed, target, cnoise
+        return cin * x_perturbed, target, cnoise, cin*x_2
 
     def loss_fn(self, net, x,n=None, *args, **kwargs):
         """

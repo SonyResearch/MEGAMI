@@ -1,0 +1,6 @@
+
+_target_: "networks.MLP_CLAP_regressor.EffectRemovalMLP"
+
+dim: 2624
+hidden_dim: 2048
+dropout: 0.1

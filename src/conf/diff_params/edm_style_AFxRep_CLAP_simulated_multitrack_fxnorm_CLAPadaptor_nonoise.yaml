@@ -36,6 +36,11 @@ CLAP_args:
   add_noise: False #if True, the features will be augmented with orthogonal noise
   noise_sigma: 0.1 #sigma of the orthogonal noise to
 
+AFxRep_args:
+  distance_type: "cosine" #distance metric to use for the AFxRep
+  ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/tmp/afx-rep.ckpt"
+
+
 
 context_signal: "wet"
 

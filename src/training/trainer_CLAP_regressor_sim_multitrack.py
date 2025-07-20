@@ -201,7 +201,7 @@ class Trainer():
 
         def encode_fn(x, *args):
             x=x.to(self.device)
-            z=CLAP_encoder(x) #shape (B, C)
+            z=CLAP_encoder(x, type="dry") #shape (B, C)
             return z
 
         self.CLAP_encode=encode_fn
@@ -209,6 +209,8 @@ class Trainer():
         self.losses = []  # This will be used to store the losses for logging
 
         self.val_set_dict=val_set_dict
+
+        self.RMS_norm=-25
 
     def setup_wandb(self):
         """
@@ -431,6 +433,17 @@ class Trainer():
                                         effect_randomizer_C1=self.effect_randomizer_C1, masks=masks)
 
 
+    def apply_RMS_normalization(self, x):
+
+        RMS= torch.tensor(self.RMS_norm, device=x.device).view(1, 1, 1).repeat(x.shape[0],1,1)  # Use fixed RMS for evaluation
+
+        x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
+
+        gain= RMS - x_RMS
+        gain_linear = 10 ** (gain / 20 + 1e-6)  # Convert dB gain to linear scale, adding a small value to avoid division by zero
+        x=x* gain_linear.view(-1, 1, 1)
+
+        return x
 
     def train_step(self):
         '''Training step'''
@@ -452,6 +465,19 @@ class Trainer():
             y=self.simulate_effects(x, cluster, taxonomy, masks)
             x=x.view(-1, x.shape[-2], x.shape[-1])  # flatten the batch and the number of tracks, so that we have a tensor of shape [B*N, C, L]
             y=y.view(-1, y.shape[-2], y.shape[-1])  #
+
+            if x.shape[1] == 2:
+                x = x.mean(dim=1, keepdim=True).expand(-1, 2, -1)
+            elif x.shape[1] == 1:  # if x is mono, we expand it to stereo
+                x = x.expand(-1, 2, -1)
+            if y.shape[1] == 2:
+                y = y.mean(dim=1, keepdim=True).expand(-1, 2, -1)
+            elif y.shape[1] == 1:  # if y is mono, we expand it to stereo   
+                y = y.expand(-1, 2, -1)
+
+            x= self.apply_RMS_normalization(x)  # apply RMS normalization to x
+            y= self.apply_RMS_normalization(y)  # apply RMS normalization to y
+
             x_encoded = self.CLAP_encode(x)  # encode x with CLAP encoder
             y_encoded = self.CLAP_encode(y)  # encode y with CLAP encoder
         
@@ -545,6 +571,19 @@ class Trainer():
                     y=self.simulate_effects(x, cluster, taxonomy, masks)
                     x=x.view(-1, x.shape[-2], x.shape[-1])  # flatten the batch and the number of tracks, so that we have a tensor of shape [B*N, C, L]
                     y=y.view(-1, y.shape[-2], y.shape[-1])  #
+
+                    if x.shape[1] == 2:
+                        x = x.mean(dim=1, keepdim=True).expand(-1, 2, -1)
+                    elif x.shape[1] == 1:  # if x is mono, we expand it to stereo
+                        x = x.expand(-1, 2, -1)
+                    if y.shape[1] == 2:
+                        y = y.mean(dim=1, keepdim=True).expand(-1, 2, -1)
+                    elif y.shape[1] == 1:  # if y is mono, we expand it to stereo   
+                        y = y.expand(-1, 2, -1)
+
+                    x= self.apply_RMS_normalization(x)  # apply RMS normalization to x
+                    y= self.apply_RMS_normalization(y)  # apply RMS normalization to y
+
                     x_encoded = self.CLAP_encode(x)  # encode x with CLAP encoder
                     y_encoded = self.CLAP_encode(y)  # encode y with CLAP encoder
 
@@ -577,8 +616,12 @@ class Trainer():
             dist.barrier()  
 
         while True:
-            #try:
-            self.train_step()
+            try:
+                self.train_step()
+            except Exception as e:
+                print("Error during training step:", e)
+                print("Skipping this step")
+                continue
 
             if self.rank == 0:
                 self.update_ema()

@@ -2,11 +2,13 @@
     Implementation of objective functions used in the task 'ITO-Master'
 """
 import numpy as np
+import math
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
 import auraloss
 import torchaudio
+import warnings
 
 
 import os
@@ -185,6 +187,7 @@ class MultiScale_Spectral_Loss_MidSide_DDSP(nn.Module):
                                                     device=device)
             self.multiscales.append(cur_scale)
 
+        self.reduce=reduce
         self.objective_l1 = nn.L1Loss(reduce=reduce)
         self.objective_l2 = nn.MSELoss(reduce=reduce)
 
@@ -197,16 +200,24 @@ class MultiScale_Spectral_Loss_MidSide_DDSP(nn.Module):
 
 
     def forward_ori(self, est_targets, targets):
-        total_mag_loss = 0.0
-        total_logmag_loss = 0.0
+        if self.reduce:
+            total_mag_loss = 0.0
+            total_logmag_loss = 0.0
+        else:
+            total_mag_loss=torch.zeros(est_targets.shape[0], 1).to(est_targets.device)
+            total_logmag_loss=torch.zeros(est_targets.shape[0], 1).to(est_targets.device)
         for cur_scale in self.multiscales:
             est_mag = cur_scale['front_end'](est_targets, mode=["mag"])
             tgt_mag = cur_scale['front_end'](targets, mode=["mag"])
 
             mag_loss = self.magnitude_loss(est_mag, tgt_mag)
             logmag_loss = self.log_magnitude_loss(est_mag, tgt_mag)
-            total_mag_loss += mag_loss
-            total_logmag_loss += logmag_loss
+            if self.reduce:
+                total_mag_loss += mag_loss
+                total_logmag_loss += logmag_loss
+            else:
+                total_logmag_loss += logmag_loss.mean((1, 2, 3)).unsqueeze(-1)
+                total_mag_loss += mag_loss.mean((1, 2, 3)).unsqueeze(-1)
         # return total_loss
         return (1-self.logmag_weight)*total_mag_loss + \
                 (self.logmag_weight)*total_logmag_loss
@@ -215,8 +226,13 @@ class MultiScale_Spectral_Loss_MidSide_DDSP(nn.Module):
     def forward_midside(self, est_targets, targets):
         est_mid, est_side = self.to_mid_side(est_targets)
         tgt_mid, tgt_side = self.to_mid_side(targets)
-        total_mag_loss = 0.0
-        total_logmag_loss = 0.0
+        if self.reduce:
+            total_mag_loss = 0.0
+            total_logmag_loss = 0.0
+        else:
+            total_logmag_loss=torch.zeros(est_targets.shape[0], 1).to(est_targets.device)
+            total_mag_loss=torch.zeros(est_targets.shape[0], 1).to(est_targets.device)
+
         for cur_scale in self.multiscales:
             est_mid_mag = cur_scale['front_end'](est_mid, mode=["mag"])
             est_side_mag = cur_scale['front_end'](est_side, mode=["mag"])
@@ -227,8 +243,15 @@ class MultiScale_Spectral_Loss_MidSide_DDSP(nn.Module):
                         (1-self.mid_weight)*self.magnitude_loss(est_side_mag, tgt_side_mag)
             logmag_loss = self.mid_weight*self.log_magnitude_loss(est_mid_mag, tgt_mid_mag) + \
                         (1-self.mid_weight)*self.log_magnitude_loss(est_side_mag, tgt_side_mag)
-            total_mag_loss += mag_loss
-            total_logmag_loss += logmag_loss
+
+                #take mean over all dimensions except batch
+            if self.reduce:
+                total_mag_loss += mag_loss
+                total_logmag_loss += logmag_loss
+            else:
+                total_mag_loss += mag_loss.mean((1, 2, 3)).unsqueeze(-1)
+                #mean over dims 1, 2, 3
+                total_logmag_loss += logmag_loss.mean((1, 2, 3)).unsqueeze(-1)
         # return total_loss
         return (1-self.logmag_weight)*total_mag_loss + \
                 (self.logmag_weight)*total_logmag_loss
@@ -241,7 +264,10 @@ class MultiScale_Spectral_Loss_MidSide_DDSP(nn.Module):
 
 
     def magnitude_loss(self, est_mag_spec, tgt_mag_spec):
-        return torch.norm(self.objective_l1(est_mag_spec, tgt_mag_spec))
+        if self.reduce:
+            return torch.norm(self.objective_l1(est_mag_spec, tgt_mag_spec))
+        else:
+            return self.objective_l1(est_mag_spec, tgt_mag_spec)
 
 
     def log_magnitude_loss(self, est_mag_spec, tgt_mag_spec):
@@ -357,11 +383,157 @@ class CLAPFeatureLoss(nn.Module):
 
 import librosa
 
+
 from typing import List
-#from modules.filter import barkscale_fbanks
+def _create_triangular_filterbank(
+    all_freqs: torch.Tensor,
+    f_pts: torch.Tensor,
+) -> torch.Tensor:
+    """Create a triangular filter bank.
+
+    Args:
+        all_freqs (Tensor): STFT freq points of size (`n_freqs`).
+        f_pts (Tensor): Filter mid points of size (`n_filter`).
+
+    Returns:
+        fb (Tensor): The filter bank of size (`n_freqs`, `n_filter`).
+    """
+    # Adopted from Librosa
+    # calculate the difference between each filter mid point and each stft freq point in hertz
+    f_diff = f_pts[1:] - f_pts[:-1]  # (n_filter + 1)
+    slopes = f_pts.unsqueeze(0) - all_freqs.unsqueeze(1)  # (n_freqs, n_filter + 2)
+    # create overlapping triangles
+    zero = torch.zeros(1)
+    down_slopes = (-1.0 * slopes[:, :-2]) / f_diff[:-1]  # (n_freqs, n_filter)
+    up_slopes = slopes[:, 2:] / f_diff[1:]  # (n_freqs, n_filter)
+    fb = torch.max(zero, torch.min(down_slopes, up_slopes))
+
+    return fb
 
 
 
+def _hz_to_bark(freqs: float, bark_scale: str = "traunmuller") -> float:
+    r"""Convert Hz to Barks.
+
+    Args:
+        freqs (float): Frequencies in Hz
+        bark_scale (str, optional): Scale to use: ``traunmuller``, ``schroeder`` or ``wang``. (Default: ``traunmuller``)
+
+    Returns:
+        barks (float): Frequency in Barks
+    """
+
+    if bark_scale not in ["schroeder", "traunmuller", "wang"]:
+        raise ValueError(
+            'bark_scale should be one of "schroeder", "traunmuller" or "wang".'
+        )
+
+    if bark_scale == "wang":
+        return 6.0 * math.asinh(freqs / 600.0)
+    elif bark_scale == "schroeder":
+        return 7.0 * math.asinh(freqs / 650.0)
+    # Traunmuller Bark scale
+    barks = ((26.81 * freqs) / (1960.0 + freqs)) - 0.53
+    # Bark value correction
+    if barks < 2:
+        barks += 0.15 * (2 - barks)
+    elif barks > 20.1:
+        barks += 0.22 * (barks - 20.1)
+
+    return barks
+
+
+def _bark_to_hz(barks: torch.Tensor, bark_scale: str = "traunmuller") -> torch.Tensor:
+    """Convert bark bin numbers to frequencies.
+
+    Args:
+        barks (torch.Tensor): Bark frequencies
+        bark_scale (str, optional): Scale to use: ``traunmuller``,``schroeder`` or ``wang``. (Default: ``traunmuller``)
+
+    Returns:
+        freqs (torch.Tensor): Barks converted in Hz
+    """
+
+    if bark_scale not in ["schroeder", "traunmuller", "wang"]:
+        raise ValueError(
+            'bark_scale should be one of "traunmuller", "schroeder" or "wang".'
+        )
+
+    if bark_scale == "wang":
+        return 600.0 * torch.sinh(barks / 6.0)
+    elif bark_scale == "schroeder":
+        return 650.0 * torch.sinh(barks / 7.0)
+    # Bark value correction
+    if any(barks < 2):
+        idx = barks < 2
+        barks[idx] = (barks[idx] - 0.3) / 0.85
+    elif any(barks > 20.1):
+        idx = barks > 20.1
+        barks[idx] = (barks[idx] + 4.422) / 1.22
+
+    # Traunmuller Bark scale
+    freqs = 1960 * ((barks + 0.53) / (26.28 - barks))
+
+    return freqs
+
+
+
+
+def barkscale_fbanks(
+    n_freqs: int,
+    f_min: float,
+    f_max: float,
+    n_barks: int,
+    sample_rate: int,
+    bark_scale: str = "traunmuller",
+) -> torch.Tensor:
+    r"""Create a frequency bin conversion matrix.
+
+    .. devices:: CPU
+
+    .. properties:: TorchScript
+
+    .. image:: https://download.pytorch.org/torchaudio/doc-assets/bark_fbanks.png
+        :alt: Visualization of generated filter bank
+
+    Args:
+        n_freqs (int): Number of frequencies to highlight/apply
+        f_min (float): Minimum frequency (Hz)
+        f_max (float): Maximum frequency (Hz)
+        n_barks (int): Number of mel filterbanks
+        sample_rate (int): Sample rate of the audio waveform
+        bark_scale (str, optional): Scale to use: ``traunmuller``,``schroeder`` or ``wang``. (Default: ``traunmuller``)
+
+    Returns:
+        torch.Tensor: Triangular filter banks (fb matrix) of size (``n_freqs``, ``n_barks``)
+        meaning number of frequencies to highlight/apply to x the number of filterbanks.
+        Each column is a filterbank so that assuming there is a matrix A of
+        size (..., ``n_freqs``), the applied result would be
+        ``A * barkscale_fbanks(A.size(-1), ...)``.
+
+    """
+
+    # freq bins
+    all_freqs = torch.linspace(0, sample_rate // 2, n_freqs)
+
+    # calculate bark freq bins
+    m_min = _hz_to_bark(f_min, bark_scale=bark_scale)
+    m_max = _hz_to_bark(f_max, bark_scale=bark_scale)
+
+    m_pts = torch.linspace(m_min, m_max, n_barks + 2)
+    f_pts = _bark_to_hz(m_pts, bark_scale=bark_scale)
+
+    # create filterbank
+    fb = _create_triangular_filterbank(all_freqs, f_pts)
+
+    if (fb.max(dim=0).values == 0.0).any():
+        warnings.warn(
+            "At least one bark filterbank has all zero values. "
+            f"The value for `n_barks` ({n_barks}) may be set too high. "
+            f"Or, the value for `n_freqs` ({n_freqs}) may be set too low."
+        )
+
+    return fb
 
 def compute_mid_side(x: torch.Tensor):
     x_mid = x[:, 0, :] + x[:, 1, :]
@@ -479,6 +651,17 @@ def compute_rms(x: torch.Tensor, **kwargs):
     rms = torch.sqrt(torch.mean(x**2, dim=-1).clamp(min=1e-8))
     return rms
 
+def compute_log_rms(x: torch.Tensor, **kwargs):
+    """Compute root mean square energy.
+
+    Args:
+        x: (bs, 1, seq_len)
+
+    Returns:
+        rms: (bs, )
+    """
+    rms=compute_rms(x)
+    return 20 * torch.log10(rms.clamp(min=1e-8))
 
 def compute_crest_factor(x: torch.Tensor, **kwargs):
     """Compute crest factor as ratio of peak to rms energy in dB.
@@ -491,6 +674,26 @@ def compute_crest_factor(x: torch.Tensor, **kwargs):
     den = compute_rms(x).clamp(min=1e-8)
     cf = 20 * torch.log10((num / den).clamp(min=1e-8))
     return cf
+
+def compute_log_spread(x: torch.Tensor, **kwargs):
+    """Compute log spread as the mean difference between log magnitude of samples and log RMS.
+    
+    Args:
+        x: (bs, 1, seq_len)
+        
+    Returns:
+        log_spread: (bs, )
+    """
+    # Compute log RMS
+    log_rms = compute_log_rms(x).unsqueeze(-1)  # (bs, 1, 1)
+    
+    # Compute log magnitude of each sample
+    log_magnitude = 20 * torch.log10(torch.abs(x).clamp(min=1e-8))  # (bs, 1, seq_len)
+    
+    # Compute the difference and take the mean
+    log_spread = torch.mean(log_magnitude - log_rms, dim=-1).squeeze(1)  # (bs, )
+    
+    return log_spread
 
 
 def compute_stereo_width(x: torch.Tensor, **kwargs):
