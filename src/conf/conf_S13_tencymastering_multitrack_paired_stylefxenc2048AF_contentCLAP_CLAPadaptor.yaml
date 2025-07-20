@@ -117,7 +117,7 @@ diff_params:
     type: "MLP_FXencAF_regressor"
     ckpt_path: "/data5/eloi/checkpoints/A7/?.pt"
     add_noise: True #if True, the features will be augmented with orthogonal noise
-    noise_sigma: 0.0217 #sigma of the orthogonal noise to
+    noise_sigma: 0.03 #sigma of the orthogonal noise to
     dim: 2112
     hidden_dim: 2048
 

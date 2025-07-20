@@ -169,7 +169,8 @@ class TencyMastering(torch.utils.data.IterableDataset):
         random_shift=1024, #shift in samples to apply to the audio, if random_shift is None, no shift is applied
         only_dry=False, #if True, only dry files are used, if False, both dry and wet files are used
         RIR_path_csv="/data5/eloi/ImpulseResponses/rir_files_train.csv",
-        sinc_train_params=None
+        sinc_train_params=None,
+        apply_effects_on_dry=False, #if True, the dry signal will be augmented with effects
         ):
 
         super().__init__()
@@ -177,6 +178,7 @@ class TencyMastering(torch.utils.data.IterableDataset):
 
         #np.random.seed(seed)
         #random.seed(seed)
+        self.apply_effects_on_dry = apply_effects_on_dry    
 
         #self.random_num_tracks=random_num_tracks
 
@@ -317,6 +319,12 @@ class TencyMastering(torch.utils.data.IterableDataset):
                 augment_target = torch.from_numpy(augment_target.T).float().to(x_wet.device)
 
                 assert augment_target.shape == x_wet.shape, "augment_target shape must match x_wet shape, got {} and {}".format(augment_target.shape, x_wet.shape)
+                assert x_dry.shape == augment_target.shape, "x_dry shape must match augment_target shape, got {} and {}".format(x_dry.shape, augment_target.shape)
+
+                if self.apply_effects_on_dry:
+                    _, x_dry = self.augment_chain(x_dry.cpu().numpy().T, x_dry.cpu().numpy().T)
+                    x_dry = torch.from_numpy(x_dry.T).float().to(x_wet.device)
+                
                 assert x_dry.shape == augment_target.shape, "x_dry shape must match augment_target shape, got {} and {}".format(x_dry.shape, augment_target.shape)
 
                 x_dry= x_dry.mean(0, keepdim=True)  # Convert stereo to mono for dry
@@ -655,12 +663,14 @@ class SincTrainTest(torch.utils.data.Dataset):
             
 
             _, augment_target=self.augment_chain(x_wet.cpu().numpy().T, x_wet.cpu().numpy().T)
+
             augment_target = torch.from_numpy(augment_target.T).float().to(x_wet.device)
             assert augment_target.shape == x_wet.shape, "augment_target shape must match x_wet shape, got {} and {}".format(augment_target.shape, x_wet.shape)
 
             assert x_dry.shape == augment_target.shape, "x_dry shape must match augment_target shape, got {} and {}".format(x_dry.shape, augment_target.shape)
 
             assert x_dry.shape[0] == 2, "x_dry must have 2 channels, got {}".format(x_dry.shape[0])
+
 
             self.test_samples.append(( x_dry,  augment_target)) 
 

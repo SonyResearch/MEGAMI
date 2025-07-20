@@ -8,9 +8,9 @@ export HYDRA_FULL_ERROR=1
 source ~/myenv/bin/activate
 
 # main config
-conf=conf_A8_fxenc_regressor_multitrack.yaml
+conf=conf_MF3wet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml
 
-n="A8_fxenc_regressor_multitrack"
+n="MF3wet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired"
 
 PATH_EXPERIMENT=/data5/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
@@ -21,7 +21,7 @@ mkdir -p $PATH_EXPERIMENT
 
 
 # Number of GPUs to use
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=1
 NUM_GPUS=1
 #MASTER_PORT=29500
 MASTER_PORT=29500
@@ -32,12 +32,12 @@ MASTER_PORT=29500
 #  exp.optimizer.lr=1e-4 \
 #  exp.batch_size=4 \
 
-python A8_train_fxenc_regressor_multitrack.py --config-name=$conf  \
+python M_train_mapper_blackbox_predictive.py --config-name=$conf  \
   model_dir=$PATH_EXPERIMENT \
   exp.resume=True \
-  dset.validation.num_tracks=5 \
-  dset.validation_2.num_tracks=1 \
+  exp.compile=False \
   exp.num_workers=8 \
-  logging=base_logging_CLAP_regressor
+  exp.batch_size=4 \
+  logging=base_logging_mapper
 
   #dset=tencymastering_vocals_server5 \

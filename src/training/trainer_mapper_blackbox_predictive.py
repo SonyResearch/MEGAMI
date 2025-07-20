@@ -963,6 +963,8 @@ class Trainer():
             raise NotImplementedError("Only MSS_mslr loss is implemented for now")
 
 
+        if self.args.exp.apply_fxnorm:
+            self.fx_normalizer= hydra.utils.instantiate(self.args.exp.fxnorm)
 
     def apply_random_effects(self, x):
 
@@ -1271,6 +1273,9 @@ class Trainer():
                 y_norm= self.apply_RMS_normalization(y)  # apply RMS normalization to y
             else:
                 y_norm = y
+
+            if self.args.exp.apply_fxnorm:
+                x=self.fx_normalizer(x)
 
         #rms_est= self.get_log_rms_from_z(z)
 

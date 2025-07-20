@@ -345,6 +345,10 @@ class Tester():
         else:
             raise NotImplementedError("Only AFxRep is implemented for now")
 
+ 
+        if self.args.exp.apply_fxnorm:
+            self.fx_normalizer= hydra.utils.instantiate(self.args.exp.fxnorm)
+
     def setup_wandb(self):
         """
         Configure wandb, open a new run and log the configuration.
@@ -538,7 +542,9 @@ class Tester():
 
                 #RMS normalization of x and y
                 x= self.apply_RMS_normalization(x)  # apply RMS normalization to x
-
+ 
+                if self.args.exp.apply_fxnorm:
+                    x=self.fx_normalizer(x)
 
                 #rms normalization of y to simplify things.. hardcoded... please change this later
                 #y= self.apply_RMS_normalization(y)  # apply RMS normalization to y
