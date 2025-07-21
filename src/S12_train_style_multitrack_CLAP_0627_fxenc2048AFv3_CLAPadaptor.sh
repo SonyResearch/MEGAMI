@@ -8,9 +8,9 @@ export HYDRA_FULL_ERROR=1
 source ~/myenv/bin/activate
 
 # main config
-conf=conf_S4_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml
+conf=conf_S12_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml
 
-n="S4_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor"
+n="S12_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor"
 
 PATH_EXPERIMENT=/data2/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
@@ -34,7 +34,7 @@ MASTER_PORT=29500
 
 python train_paired_multitrack.py --config-name=$conf  \
   model_dir=$PATH_EXPERIMENT \
-  exp.num_workers=4 \
+  exp.num_workers=12 \
   exp.resume=True \
   exp.compile=True \
   dset.validation.num_tracks=16 \

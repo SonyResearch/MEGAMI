@@ -6,7 +6,7 @@ from fx_model.processors.compexp import prepare_compexp_parameters, compexp_func
 
 from fx_model.processors.peq import prepare_PEQ_parameters, peq_functional, prepare_PEQ_FDN_parameters, peq_FDN_functional
 
-from fx_model.processors.STFT_diffused_reverb import STFTMaskedNoiseReverb_filterbank, STFTMaskedNoiseReverb, STFTEQ
+#from fx_model.processors.STFT_diffused_reverb import STFTMaskedNoiseReverb_filterbank, STFTMaskedNoiseReverb, STFTEQ
 from utils.training_utils import Gauss_smooth, Gauss_smooth_vectorized, create_music_mean_spectrum_curve, prepare_smooth_filter
 
 import utils.training_utils as utils
@@ -185,20 +185,21 @@ class FxNormAug:
 
     def __call__(self, x):
 
-        print("Applying FxNormAug forward pass")
+        ##print("Applying FxNormAug forward pass")
         #first stereo to mono (if needed)
         B, C, T = x.shape
         if C > 1:
             x = x.mean(dim=1, keepdim=True)
 
         #then apply random compressor
-        x= self.apply_RMS_normalization(x, random=False)
-        x = self.apply_compexp_1(x)
-        assert not torch.isnan(x).any(), "NaN detected in x after compression"
+        #x= self.apply_RMS_normalization(x, random=False)
+        #x = self.apply_compexp_1(x)
+        #assert not torch.isnan(x).any(), "NaN detected in x after compression"
 
         x= self.apply_RMS_normalization(x, random=False)
 
         x=self.EQ_normalize(x)
+        x= self.apply_RMS_normalization(x, random=False)
         assert not torch.isnan(x).any(), "NaN detected in x after EQ normalization"
 
         return x

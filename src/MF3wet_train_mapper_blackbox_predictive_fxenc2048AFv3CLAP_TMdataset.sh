@@ -12,7 +12,7 @@ conf=conf_MF3wet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml
 
 n="MF3wet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired"
 
-PATH_EXPERIMENT=/data5/eloi/experiments/$n
+PATH_EXPERIMENT=/data2/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
 
 #python train.py --config-name=$conf \
@@ -21,7 +21,7 @@ mkdir -p $PATH_EXPERIMENT
 
 
 # Number of GPUs to use
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 NUM_GPUS=1
 #MASTER_PORT=29500
 MASTER_PORT=29500

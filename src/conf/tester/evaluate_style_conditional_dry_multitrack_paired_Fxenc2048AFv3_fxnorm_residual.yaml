@@ -1,12 +1,12 @@
 name: "2nd-order-Heun-unconditional" #same as the file name, try to do that for all testers
 
 tester:
-  _target_: 'testing.tester_simulated.Tester'
+  _target_: 'testing.tester_multitrack.Tester'
 
 sampler:
   _target_: 'inference.sampler_euler_heun_multitrack.SamplerEulerHeun'
 
-modes: ["style_conditional_dry_multitrack"] #modes to test
+modes: ["style_conditional_fxnorm_multitrack_residual"] #modes to test
 
 
 compute_metrics: True #if true, the metrics will be computed after sampling
@@ -27,7 +27,8 @@ sampling_params:
   sde_hp:
     sigma_data: 0.025 #default for maestro
     sigma_min: 5e-4
-    sigma_max: 5 #this is sigma_start
+    sigma_max: 5
+    max_sigma: 5
     rho: 10
   Schurn: 0
   Snoise: 1
@@ -65,7 +66,6 @@ KAD_args:
 fx_encoder_plusplus_args:
   distance_type: "cosine"
   ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/utils/feature_extractors/ckpt/fxenc_plusplus_default.pt"
-
 
 #logging configuration
 wandb:

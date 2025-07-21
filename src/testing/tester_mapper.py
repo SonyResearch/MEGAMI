@@ -500,8 +500,7 @@ class Tester():
         #self.it = 0
         for k, test_set in self.test_set_dict.items():
 
-            print(f"Testing on {k} set")
-
+            print(f"Testing on {k} set", k)
 
             assert len(test_set) != 0, "No samples found in test set"
     
