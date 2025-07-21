@@ -34,7 +34,7 @@ MASTER_PORT=29500
 
 python train_paired_multitrack.py --config-name=$conf  \
   model_dir=$PATH_EXPERIMENT \
-  exp.num_workers=4 \
+  exp.num_workers=8 \
   exp.resume=True \
   exp.compile=True \
   exp.max_tracks=14 \

@@ -115,9 +115,9 @@ diff_params:
 
   fxencAF_adaptor_args:
     type: "MLP_FXencAF_regressor"
-    ckpt_path: "/data5/eloi/checkpoints/A7/?.pt"
+    ckpt_path: "/data5/eloi/checkpoints/A8/MLP_CLAP_regressor-3000.pt"
     add_noise: True #if True, the features will be augmented with orthogonal noise
-    noise_sigma: 0.03 #sigma of the orthogonal noise to
+    noise_sigma: 0.04 #sigma of the orthogonal noise to
     dim: 2112
     hidden_dim: 2048
 
