@@ -25,10 +25,10 @@ batch_size: 16 #batch size for sampling, should be 1 for conditional sampling
 sampling_params:
   same_as_training: False #if true, the sampling parameters will be the same as the ones used for training (sigma_data, sigma_min, sigma_max and rho)
   sde_hp:
-    sigma_data: 0.0716 #default for maestro
-    sigma_min: 2e-3
-    sigma_max: 20
-    max_sigma: 20
+    sigma_data: 0.025 #default for maestro
+    sigma_min: 5e-4
+    sigma_max: 5
+    max_sigma: 5
     rho: 10
   Schurn: 0
   Snoise: 1

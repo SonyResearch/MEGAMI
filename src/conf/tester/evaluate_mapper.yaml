@@ -12,16 +12,10 @@ modes: ["paired"] #modes to test
 compute_metrics: True #if true, the metrics will be computed after sampling
 
 metrics:
-  - "kad-AFxRep-mid"
-  - "kad-AFxRep-side"
   - "pairwise-IM-mss-lr"
   - "pairwise-IM-mss-ms"
   - "pairwise-mss-lr"
   - "pairwise-mss-ms"
-  - "pairwise-mldr-lr"
-  - "pairwise-mldr-ms"
-  - "pairwise-AFxRep-mid"
-  - "pairwise-AFxRep-side"
   - "pairwise-fxenc++"
   - "pairwise-logrms"
   - "pairwise-crestfactor"

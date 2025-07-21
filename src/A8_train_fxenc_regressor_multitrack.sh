@@ -12,7 +12,7 @@ conf=conf_A8_fxenc_regressor_multitrack.yaml
 
 n="A8_fxenc_regressor_multitrack"
 
-PATH_EXPERIMENT=/data5/eloi/experiments/$n
+PATH_EXPERIMENT=/data2/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
 
 #python train.py --config-name=$conf \
@@ -21,7 +21,7 @@ mkdir -p $PATH_EXPERIMENT
 
 
 # Number of GPUs to use
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=2
 NUM_GPUS=1
 #MASTER_PORT=29500
 MASTER_PORT=29500

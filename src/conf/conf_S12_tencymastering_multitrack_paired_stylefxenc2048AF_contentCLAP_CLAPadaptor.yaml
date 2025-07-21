@@ -1,11 +1,10 @@
 
 defaults:
-  - dset: fulltency_multitrack_server5
+  - dset: tencymastering_multitrack_paired_server101
   - tester: evaluate_style_conditional_dry_multitrack_paired_Fxenc2048AFv3_fxnorm_residual
   - logging: base_logging
 
 model_dir: "/data4/eloi/experiments/1C_tencymastering_vocals"
-
 
 
 dset:
@@ -100,11 +99,11 @@ diff_params:
     rho: 10
 
   CLAP_args:
-    ckpt_path: "/data5/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
+    ckpt_path: "/data2/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
     distance_type: "cosine"
     normalize: True #if True, the features will be normalized
     use_adaptor: True #if True, the features will be adapted to the CLAP space
-    adaptor_checkpoint: "/data5/eloi/checkpoints/A2_CLAP_TM/MLP_CLAP_regressor-20000.pt"
+    adaptor_checkpoint: "/data2/eloi/checkpoints/A2_CLAP_TM/MLP_CLAP_regressor-20000.pt"
     adaptor_type: "MLP_CLAP_regressor"
     add_noise: True #if True, the features will be augmented with orthogonal noise
     noise_sigma: 0.022 #sigma of the orthogonal noise to
@@ -115,28 +114,20 @@ diff_params:
 
   fxencAF_adaptor_args:
     type: "MLP_FXencAF_regressor"
-    ckpt_path: "/data5/eloi/checkpoints/A7/?.pt"
+    ckpt_path: "/data2/eloi/checkpoints/A8/MLP_CLAP_regressor-6000.pt"
     add_noise: True #if True, the features will be augmented with orthogonal noise
-    noise_sigma: 0.03 #sigma of the orthogonal noise to
+    noise_sigma: 0.04 #sigma of the orthogonal noise to
     dim: 2112
     hidden_dim: 2048
 
   context_signal: "wet"
 
   apply_fxnormaug: False
-  fxnormaug_train:
-    _target_: fx_model.fxnormaug_v0.FxNormAug
-    sample_rate: 44100
-    mode: "train"
-    device: "cuda"
-
-  fxnormaug_inference:
-    _target_: fx_model.fxnormaug_v0.FxNormAug
-    sample_rate: 44100
-    mode: "inference"
-    device: "cuda"
+  fxnormaug_train: Null
+  fxnormaug_inference: Null
 
   default_shape: [1,3, 64, 33] 
+
 
 network:
   _target_: "networks.dit_multitrack.DiffusionTransformer"
