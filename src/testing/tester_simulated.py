@@ -581,7 +581,9 @@ class Tester():
                 style_emb_cond = self.sampler.diff_params.style_encode(cond, use_adaptor=True if is_wet else False, masks=masks)
             else:
                 style_emb_cond=None
+
             cond, x_preprocessed=self.sampler.diff_params.transform_forward(cond,  is_condition=True, is_test=True, clusters=cluster, taxonomy=taxonomy, masks=masks, is_wet=is_wet)
+
             if style_emb_cond is not None:
                 cond=(cond, style_emb_cond)  # cond is a tuple of (cond, style_emb_cond) if style_emb_cond is not None, else just cond
 
