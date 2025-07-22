@@ -6,7 +6,7 @@ tester:
 sampler:
   _target_: 'inference.sampler_euler_heun_multitrack.SamplerEulerHeun'
 
-modes: ["style_conditional_fxnorm_multitrack_residual"] #modes to test
+modes: ["style_conditional_fxnorm_multitrack"] #modes to test
 
 
 compute_metrics: True #if true, the metrics will be computed after sampling
