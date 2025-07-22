@@ -541,7 +541,7 @@ class Tester():
         with torch.no_grad():
             is_wet= "wet" in input_type
             if residual:
-                style_emb_cond = self.sampler.diff_params.style_encode(cond, use_adaptor=True if is_wet else False, masks=masks)
+                style_emb_cond = self.sampler.diff_params.style_encode(cond, use_adaptor=True, masks=masks)
             else:
                 style_emb_cond=None
 

@@ -476,7 +476,7 @@ class EDM_Style_Multitrack(EDM):
 
         return x_hat
 
-    def style_encode(self, x, compile=False, masks=None, taxonomy=None):
+    def style_encode(self, x, compile=False, masks=None, taxonomy=None, use_adaptor=False):
         """
         Encode the input audio using the style encoder
         Args:
