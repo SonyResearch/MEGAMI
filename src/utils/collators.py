@@ -89,9 +89,10 @@ def collate_multitrack_train(batch, max_tracks=None, sample_rate=None, segment_l
             x[i] = x[i].to(device)  # Move to device
             if fs[i] != sample_rate:
                 if fs[i] == 48000 and sample_rate == 44100:
+                    #print(f"Resampling audio from {fs[i]} Hz to {sample_rate} Hz")
                     x[i]=torchaudio.functional.resample(x[i], orig_freq=160, new_freq=147)
                 else:
-                    print(f"Resampling audio from {fs[i]} Hz to {sample_rate} Hz")
+                    #print(f"Resampling audio from {fs[i]} Hz to {sample_rate} Hz")
                     x[i]=torchaudio.functional.resample(x[i], fs[i], sample_rate)
 
             assert segment_length is not None, "segment_length should be set to the length of the audio segment in samples"

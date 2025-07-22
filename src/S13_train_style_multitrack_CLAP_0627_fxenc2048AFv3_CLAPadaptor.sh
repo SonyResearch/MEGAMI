@@ -34,7 +34,7 @@ MASTER_PORT=29500
 
 python train_multitrack.py --config-name=$conf  \
   model_dir=$PATH_EXPERIMENT \
-  exp.num_workers=8 \
+  exp.num_workers=10 \
   exp.resume=True \
   exp.compile=True \
   dset.validation.num_tracks=16 \
