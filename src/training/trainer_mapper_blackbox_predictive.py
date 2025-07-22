@@ -1277,11 +1277,6 @@ class Trainer():
             if self.args.exp.apply_fxnorm:
                 x=self.fx_normalizer(x)
 
-        #rms_est= self.get_log_rms_from_z(z)
-
-        #print("RMS estimated from z", rms_est)
-        #print("RMS of y", 20*torch.log10(torch.sqrt(torch.mean(y**2, dim=(-1), keepdim=True))))
-
 
         y_pred=self.network(x, z)
 
