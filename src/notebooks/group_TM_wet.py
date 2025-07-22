@@ -43,8 +43,6 @@ subdirs=["part1","part2", "part3", "part4", "part4_test", "part4_validation"]
 
 
 
-
-
 dir_out="wet_4instr"
 dir_dry="multi"
 
@@ -58,16 +56,21 @@ for subdir in subdirs:
 
     for id in tqdm.tqdm(ids):
         try:
-            print(f"Processing {id}")
             #if os.path.basename(id) in skip_ids:
             #    print(f"Skipping {id} because it is in the skip list")
             #    continue
             path_in= os.path.join(id, dir_dry)
             path_out= os.path.join(id, dir_out)
-    
             #create the output directory if it does not exist
             if not os.path.exists(path_out):
                 os.makedirs(path_out)
+            #check if path_out is empty, if not, skip it
+            #if os.listdir(path_out) and do_selection:
+            #    print(f"Skipping {id} because {path_out} is not empty")
+            #    continue
+            #else:
+            #    print(f"Processing {id}")
+    
     
             if not os.path.exists(path_in):
                 raise FileNotFoundError(f"Input directory {path_in} does not exist")
@@ -101,13 +104,20 @@ for subdir in subdirs:
                 else:
                     x, fs = sf.read(wav_file)
                     x=torch.tensor(x).float()
+
+                    print("x.shape", x.shape, "tracks[inst_class].shape", tracks[inst_class].shape)
     
                     #cut the track to the same length as the first track
                     if x.shape[0] > tracks[inst_class].shape[0]:
                         x = x[:tracks[inst_class].shape[0]]
                     elif x.shape[0] < tracks[inst_class].shape[0]:
-                        x = torch.nn.functional.pad(x, (0, tracks[inst_class].shape[0] - x.shape[0]))
+                        #shape is [N, C] for stereo, we need to pad the second dimension
+                        x=x.permute(1,0)
+                        #shape is [C, N], we need to pad the second dimension
+                        x = torch.nn.functional.pad(x, (0, tracks[inst_class].shape[0] - x.shape[-1]))
+                        x= x.permute(1,0)
     
+                    print("x.shape", x.shape, "tracks[inst_class].shape", tracks[inst_class].shape)
                     tracks[inst_class] += x
     
     

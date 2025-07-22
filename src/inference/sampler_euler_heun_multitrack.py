@@ -35,7 +35,6 @@ class SamplerEulerHeun(Sampler):
         self.taxonomy = taxonomy
         self.masks = masks
 
-        print("cfg_scale", cfg_scale)
         self.cfg_scale = cfg_scale
 
         return self.predict(shape, device, apply_inverse_transform=apply_inverse_transform)

@@ -115,26 +115,18 @@ diff_params:
 
   fxencAF_adaptor_args:
     type: "MLP_FXencAF_regressor"
-    ckpt_path: "/data5/eloi/checkpoints/A8/MLP_CLAP_regressor-3000.pt"
+    ckpt_path: "/data5/eloi/checkpoints/A8/MLP_CLAP_regressor-6000.pt"
     add_noise: True #if True, the features will be augmented with orthogonal noise
-    noise_sigma: 0.04 #sigma of the orthogonal noise to
+    noise_sigma: 0.05 #sigma of the orthogonal noise to
     dim: 2112
     hidden_dim: 2048
 
   context_signal: "wet"
 
   apply_fxnormaug: False
-  fxnormaug_train:
-    _target_: fx_model.fxnormaug_v0.FxNormAug
-    sample_rate: 44100
-    mode: "train"
-    device: "cuda"
+  fxnormaug_train: Null
 
-  fxnormaug_inference:
-    _target_: fx_model.fxnormaug_v0.FxNormAug
-    sample_rate: 44100
-    mode: "inference"
-    device: "cuda"
+  fxnormaug_inference: Null
 
   default_shape: [1,3, 64, 33] 
 

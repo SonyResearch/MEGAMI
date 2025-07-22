@@ -104,6 +104,7 @@ for subdir in subdirs:
                     elif x.shape[0] < tracks[inst_class].shape[0]:
                         x = torch.nn.functional.pad(x, (0, tracks[inst_class].shape[0] - x.shape[0]))
     
+                    print("x.shape", x.shape, "tracks[inst_class].shape", tracks[inst_class].shape)
                     tracks[inst_class] += x
     
     

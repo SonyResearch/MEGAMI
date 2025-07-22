@@ -1,0 +1,70 @@
+
+#Elucidated Diffusion Model (Karras et al. 2022)
+_target_: "diff_params.edm_LDM.EDM_LDM"
+
+# SDE hyperparameters
+type: "ve_karras"
+
+AE_type: "Music2Latent4" 
+
+cfg_dropout_prob: 0.5
+
+sde_hp:
+  sigma_data: 0.5 #default for maestro
+  sigma_min: 1e-2
+  sigma_max: 100
+  rho: 10
+  max_sigma: 100
+
+default_shape: [1, 64, 128]
+
+context_preproc: 
+  to_mono: True
+  add_noise: True
+  noise_type: "pink"
+  SNR_mean: 0.0
+  SNR_std: 2.0
+
+
+effect_randomizer:
+    _target_: utils.fx_randomization.randomizers.ReverbRandomizer
+    range_coloration: 2
+    min_T60: 0.2
+    max_T60: 1.5
+    sample_rate: ${exp.sample_rate}
+    ir_len: ${exp.sample_rate}
+    batch_size: ${exp.batch_size}
+    drywet_ratio_min: 0.0
+    drywet_ratio_max: 1.0
+
+effect_randomizer_comp:
+    _target_: utils.fx_randomization.randomizers.CompRandomizer
+    batch_size: ${exp.batch_size}
+  
+effect_randomizer_test:
+    _target_: utils.fx_randomization.randomizers.ReverbRandomizer
+    range_coloration: 0
+    min_T60: 0.3
+    max_T60: 0.3
+    sample_rate: ${exp.sample_rate}
+    ir_len: ${exp.sample_rate}
+    batch_size: ${exp.batch_size}
+    drywet_ratio_min: 0.9
+    drywet_ratio_max: 0.9
+
+effect_randomizer_comp_test:
+    _target_: utils.fx_randomization.randomizers.CompRandomizer
+    batch_size: ${exp.batch_size}
+    smoother_mode_energy: "iir"  # Options: "iir", "ballistics"
+    smoother_mode_gain: Null  # Options: "iir", "ballistics"
+    range_log_threshold: [0,0]  # dB range for log threshold randomization
+    range_log_ratio: [0,0]  # dB range for log ratio randomization
+    range_log_knee: [-1.0,-1.0]  # Knee range for compressor randomization
+    range_z_alpha_pre: [0,0] # Z-alpha range for compressor randomization
+    range_z_alpha_post: [0,0] # Z-alpha range for compressor randomization
+    RMS_mean: -25  # Mean RMS level for randomization
+    RMS_std: 0  # Standard deviation for RMS level randomization
+  
+randomize_RMS: True
+RMS_mean: -25.0
+RMS_std: 5.0
