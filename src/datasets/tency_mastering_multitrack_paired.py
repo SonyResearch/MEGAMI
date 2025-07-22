@@ -14,6 +14,7 @@ import random
 from utils.data_utils import read_wav_segment, get_audio_length
 import torch.distributed as dist
 
+from utils.common_audioeffects import AugmentationChain, ConvolutionalReverb, Compressor, Equaliser, Panner, Haas, Gain
 import pickle
 
 from tqdm import tqdm
@@ -165,6 +166,8 @@ class TencyMastering_Test(torch.utils.data.Dataset):
         path_csv=None,
         only_dry=False, #if True, only dry files are used, if False, both dry and wet files are used
         random_order=False, #if True, the order of the samples is randomized
+        apply_randomFx_to_dry= False, #if True, random effects are applied to the samples
+        RIR_path_csv="/data5/eloi/ImpulseResponses/rir_files_val.csv",
         ):
 
         super().__init__()
@@ -240,6 +243,35 @@ class TencyMastering_Test(torch.utils.data.Dataset):
             self.df = self.df.sample(frac=1, random_state=seed)
 
         num_skips=0
+
+        if apply_randomFx_to_dry:
+            df= pd.read_csv(RIR_path_csv)
+            #list of RIR files
+            RIR_files = df['rir_file'].tolist()
+
+            acceoted_sampling_rates = [44100]
+            dataset_rir=pd.DataFrame(columns=['impulse_response'])
+            for i, file in enumerate(RIR_files):
+                #load the RIR file
+                x,fs=sf.read(file)
+                n_samples=x.shape[0]
+                if len(x.shape) == 1:
+                    x = x[:, None]
+                my_tuple=(int(n_samples), x)
+                #add my_tuple to the dataset_rir DataFrame (column 'impulse_response')
+                dataset_rir.loc[i, 'impulse_response'] = my_tuple
+
+
+            self.augment_chain= AugmentationChain([
+                    (ConvolutionalReverb(impulse_responses=dataset_rir, sample_rates=acceoted_sampling_rates), 0.5),
+                    (Haas(sample_rates=acceoted_sampling_rates), 0.5),
+                    (Gain(), 0.8),
+                    (Panner(sample_rates=acceoted_sampling_rates), 0.5),
+                    (Compressor(sample_rates=acceoted_sampling_rates), 0.5),
+                    (Equaliser(n_channels=2,sample_rates=acceoted_sampling_rates), 0.5),
+                    ],
+                    shuffle=True, apply_to='target')
+
 
         for row in tqdm(self.df.iterrows()):
 
@@ -424,6 +456,14 @@ class TencyMastering_Test(torch.utils.data.Dataset):
                     if not self.only_dry:
                         x_all_wet_i=x_all_wet_i[indices]
                     taxonomies_selected = [taxonomies_selected[i] for i in indices]
+                
+                if apply_randomFx_to_dry:
+                    for i in range(x_all_i.shape[0]):
+                        _, x_augmented= self.augment_chain(x_all_i[i].cpu().numpy().T, x_all_i[i].cpu().numpy().T)
+                        x_augmented=torch.from_numpy(x_augmented.T).float().to(x_all_i.device)
+                        #stereo to mono
+                        x_augmented = x_augmented.mean(dim=0, keepdim=True)
+                        x_all_i[i] = x_augmented
 
                 if self.only_dry:
                     self.test_samples.append(( x_all_i, None,   taxonomies_selected, path)) 

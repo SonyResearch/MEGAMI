@@ -83,6 +83,42 @@ class EDM_Style_Multitrack(EDM):
             self.AE_encode_compiled=torch.compile(encode_fn)
 
             self.AE_decode=lambda x: x
+        elif AE_type=="CLAP_AF":
+            CLAP_args= kwargs.get("CLAP_args", None)
+            assert CLAP_args is not None, "CLAP_args must be provided for CLAP AE"
+
+            # Save original path
+            original_path = sys.path.copy()
+   
+            from utils.load_features import load_CLAP
+            CLAP_encoder= load_CLAP(CLAP_args, device=self.device)
+
+            sys.path = original_path
+
+            from utils.AF_features_embedding_v2 import AF_fourier_embedding
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def encode_fn(x, *args, **kwargs):
+                x=x.to(self.device)
+
+                type= kwargs.get("type", None)
+                z=CLAP_encoder(x, type) #shape (B, C)
+
+                z_af,_=AFembedding.encode(x)
+
+                z= torch.cat([z, z_af], dim=-1)
+
+                z=z.view(z.shape[0], 64, -1) #shape (B, 64, N)
+
+                z=z.permute(0, 2, 1) #shape (B, N, 64)
+
+                return z
+            
+
+            self.AE_encode=encode_fn
+            self.AE_encode_compiled=torch.compile(encode_fn)
+
+            self.AE_decode=lambda x: x
 
         elif AE_type=="CLAP":
             CLAP_args= kwargs.get("CLAP_args", None)
@@ -306,7 +342,6 @@ class EDM_Style_Multitrack(EDM):
             feat_extractor = load_fx_encoder_plusplus_2048(Fxencoder_plusplus_args, self.device)
 
             from utils.AF_features_embedding_v2 import AF_fourier_embedding
-
             AFembedding= AF_fourier_embedding(device=self.device)
 
             def fxencode_fn(x):
@@ -459,20 +494,16 @@ class EDM_Style_Multitrack(EDM):
 
             masks_in= torch.cat([masks, masks], dim=0) if masks is not None else None
 
-            #taxonomy is a list of lists, we need to double the list to match the batch size
-            taxonomy_in=taxonomy + taxonomy
 
-            net_out_batch=net(x_in_cat, cnoise.to(torch.float32), cross_attn_cond=inputs_cond , mask=masks_in, taxonomy=taxonomy_in,  cross_attn_cond_mask=masks_in)  #this will crash because of broadcasting problems, debug later!0
+            net_out_batch=net(x_in_cat, cnoise.to(torch.float32), cross_attn_cond=inputs_cond , mask=masks_in,  cross_attn_cond_mask=masks_in)  #this will crash because of broadcasting problems, debug later!0
 
             cond_output, uncond_output = torch.chunk(net_out_batch, 2, dim=0)
 
             net_out = uncond_output + (cond_output - uncond_output) * cfg_scale
 
+
         x_hat=cskip*xn + cout*net_out   
-
         x_hat=x_hat* masks.view(masks.shape[0], masks.shape[1], 1, 1) 
-
-
 
         return x_hat
 
