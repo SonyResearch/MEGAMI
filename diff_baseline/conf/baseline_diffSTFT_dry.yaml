@@ -1,12 +1,12 @@
 
 defaults:
-  - dset: tencymastering_multitrack_paired_4instr_server5
+  - dset: tencymastering_multitrack_paired_4instr_server101
   - network: ncsnpp_44k_cond_v2
   - diff_params: edm_diffSTFT
   - tester: conditional_dry_multitrack
   - logging: base_logging
 
-model_dir: "/data4/eloi/experiments/1A_tencymastering_vocals"
+model_dir: "/data2/eloi/experiments/1A_tencymastering_vocals"
 
 dset:
   train:

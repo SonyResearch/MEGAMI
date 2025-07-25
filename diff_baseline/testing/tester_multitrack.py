@@ -308,9 +308,9 @@ class Tester():
                 B,N, C, T = y.shape
 
                 if input_type == "dry" or input_type == "fxnorm_dry":
-                    preds=self.sample_conditional_multitrack(mode, x, B=B, N=N, input_type=input_type)
+                    preds, init =self.sample_conditional_multitrack(mode, x, B=B, N=N, input_type=input_type)
                 elif input_type == "fxnorm_wet":
-                    preds=self.sample_conditional_multitrack(mode, y, B=B,N=N, input_type=input_type)
+                    preds, init=self.sample_conditional_multitrack(mode, y, B=B,N=N, input_type=input_type)
 
                     
                 print("preds", preds.shape, "sample_y", y.shape, "sample_x", x.shape)
@@ -321,6 +321,7 @@ class Tester():
                 y= y.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
                 preds = preds.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
                 x= x.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+                init = init.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
 
                 for b in range(B):
         
@@ -329,6 +330,7 @@ class Tester():
                             self.log_audio(preds[b], f"pred_{k}_{i}", it=self.it)  # Just log first sample
                             self.log_audio(y[b], f"original_wet_{k}_{i}", it=self.it)  # Just log first sample
                             self.log_audio(x[b], f"original_dry_{k}_{i}", it=self.it)  # Just log first sample
+                            self.log_audio(init[b], f"init_{k}_{i}", it=self.it)  # Just log first sample
 
                     dict_y[i] = y[b].detach().cpu().numpy()  # Store the wet audio for each track
                     dict_y_hat[i] = preds[b].detach().cpu().numpy()  # Store the predicted audio for each track
@@ -784,7 +786,7 @@ class Tester():
                 # Truncate the predictions
                 preds = preds[..., :cond_shape[-1]]
 
-        return preds
+        return preds, noise_init
 
     def sample_conditional(self, mode, cond, B=1):
         # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that

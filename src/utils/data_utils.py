@@ -103,6 +103,30 @@ def efficient_roll(x, shift, dims=-1):
     # Use index_select for the roll
     return torch.index_select(x, dims, indices)
 
+import louness
+import numpy as np
+
+def apply_loud_normalization(x, lufs=-23, sampel_rate=44100,device=None):
+    """
+    x shaPe: (batch_size, channels, time)
+    """
+
+    B, C, T = x.shape
+
+    x_out = torch.zeros_like(x)
+    for b in range(B):
+        x_i=x[b].cpu().numpy().T
+        lufs_in=loudness.integrated_loudness(x_i, sample_rate)
+
+        delta_loudness= lufs - lufs_in
+        gain=np.power(10, delta_loudness / 20)  # Convert dB to linear gain
+
+        x_out[b] = torch.tensor(x_i.T * gain, device=device)
+
+    return x_out
+
+
+
 
 def apply_RMS_normalization(x, RMS_norm=-25, device=None):
         if device is None:
