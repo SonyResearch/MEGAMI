@@ -192,7 +192,10 @@ class EDM(SDE):
                     null_embed = torch.zeros_like(context, device=context.device)
                     #dropout context with probability cfg_dropout_prob
                     mask = torch.rand(context.shape[0], device=context.device) < self.cfg_dropout_prob
-                    context = torch.where(mask.view(-1,1,1), null_embed, context)
+                    #print("mask", mask.shape, mask.dtype)
+                    #print("context before dropout", context.shape, context.dtype)
+
+                    context = torch.where(mask.view(-1,1,1,1), null_embed, context)
     
 
         t = self.sample_time_training(y.shape[0]).to(y.device)

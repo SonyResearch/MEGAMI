@@ -17,8 +17,7 @@ import torch.distributed as dist
 import pickle
 
 from tqdm import tqdm
-
-from utils.data_utils import taxonomy2track
+from utils.data_utils import taxonomy2track, efficient_roll
 
 
 def trackname2taxonomy(tracks):
@@ -341,14 +340,22 @@ class TencyMastering_Test(torch.utils.data.Dataset):
                             x_wet_long = x_wet_long[..., :x_all_wet.shape[-1]]
                         x_all_wet[i] = x_wet_long
 
-                    
-
             if not self.only_dry:
                 alignment_file=Path(dry_files[0]).parent.parent / "alignment.pickle"
                 alignment_data = pickle.load(open(alignment_file, "rb"))
                 dry_align=alignment_data.get("dry_alignment",0)
-                x_all=torch.roll(x_all, shifts=int(dry_align), dims=-1)
-                x_sum= torch.roll(x_sum, shifts=int(dry_align), dims=-1)
+                wet_align=alignment_data.get("multi_alignment",0)
+    
+                x_all=efficient_roll(x_all, -int(dry_align), dims=-1)
+                x_sum= efficient_roll(x_sum,-int(dry_align), dims=-1)
+                if not self.only_dry:
+                    x_all_wet=efficient_roll(x_all_wet, -int(wet_align), dims=-1)
+
+                #alignment_file=Path(dry_files[0]).parent.parent / "alignment.pickle"
+                #alignment_data = pickle.load(open(alignment_file, "rb"))
+                #dry_align=alignment_data.get("dry_alignment",0)
+                #x_all=torch.roll(x_all, shifts=int(dry_align), dims=-1)
+                #x_sum= torch.roll(x_sum, shifts=int(dry_align), dims=-1)
 
             
             max_length = x_sum.size(-1)
@@ -578,8 +585,47 @@ class TencyMastering(torch.utils.data.IterableDataset):
                     total_frames= min(total_frames, wet_total_frames)
                     wet_frames.append(wet_total_frames)
     
-                start=np.random.randint(0,total_frames-self.segment_length)
-                end=start+ self.segment_length
+                #start=np.random.randint(0,total_frames-self.segment_length)
+                #end=start+ self.segment_length
+
+                alignment_file=Path(dry_files[0]).parent.parent / "alignment.pickle"
+                alignment_data = pickle.load(open(alignment_file, "rb"))
+                dry_align=alignment_data.get("dry_alignment",0)
+                wet_align=alignment_data.get("multi_alignment",0)
+
+                # Calculate the valid range for the start index considering alignments
+                max_dry_offset = max(0, dry_align)
+                max_wet_offset = max(0, wet_align)
+                min_dry_offset = min(0, dry_align)
+                min_wet_offset = min(0, wet_align)
+    
+                # Ensure we have enough samples at the beginning and end
+                valid_start_min = max(0, -min_dry_offset, -min_wet_offset)
+                valid_end_max = min(total_frames, total_frames - max_dry_offset, total_frames - max_wet_offset)
+    
+                # Ensure we have enough space for the segment
+                valid_range = valid_end_max - valid_start_min - self.segment_length
+                if valid_range <= 0:
+                    # Handle the case where the segment can't fit with alignments
+                    # Either reduce segment length or use padding
+                    print(f"Cannot fit segment of length {self.segment_length} with alignments {dry_align}, {wet_align}")
+                    continue
+    
+                # Choose a random start within the valid range
+                start = valid_start_min + np.random.randint(0, valid_range)
+                end = start + self.segment_length
+    
+
+                #print("valid_start_min", valid_start_min, "valid range", valid_range,"start", start, "end", end, "total_frames", total_frames, "segment_length", self.segment_length, "dry_align", dry_align, "wet_align", wet_align)
+    
+                # Apply alignments
+                start_dry = start + dry_align
+                end_dry = start_dry + self.segment_length
+    
+                start_wet = start + wet_align
+                end_wet = start_wet + self.segment_length
+    
+
     
                 #x_all=torch.zeros((len(dry_files),2, self.segment_length), dtype=torch.float32)
                 #x_all_wet=torch.zeros((len(dry_files),2, self.segment_length), dtype=torch.float32)
@@ -588,7 +634,8 @@ class TencyMastering(torch.utils.data.IterableDataset):
     
                 selected_tracks_dry=[]
                 selected_tracks_wet=[]
-    
+
+
                 for i, (dry_file, wet_file) in enumerate(zip(dry_files, wet_files)):
     
                     out=load_audio(str(dry_file), start, end, stereo=self.stereo)
@@ -613,8 +660,6 @@ class TencyMastering(torch.utils.data.IterableDataset):
     
                     if not self.only_dry:
         
-                        start_wet = start
-                        end_wet = end
                         out=load_audio(str(wet_file), start_wet, end_wet, stereo=self.stereo)
     
                         if out is None:

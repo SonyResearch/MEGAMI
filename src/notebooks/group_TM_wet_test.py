@@ -38,18 +38,13 @@ def group_classes(input_class, num_instr):
 
 
 
-<<<<<<< HEAD
 path_TM="/data5/eloi/test_set/TM_tracks"
 #subdirs=["part1","part2", "part3", "part4", "part4_test", "part4_validation"]
-=======
-path_TM="/data2/eloi/TencyMastering"
-subdirs=["part1","part2", "part3", "part4", "part4_test", "part4_validation"]
->>>>>>> 79fab90e48509b8324de776cec28fdb171345c42
 
 
 
-dir_out="dry_4instr"
-dir_dry="dry_multi"
+dir_out="wet_4instr"
+dir_dry="multi"
 
 do_selection=True
 

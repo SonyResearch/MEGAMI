@@ -651,6 +651,18 @@ def compute_rms(x: torch.Tensor, **kwargs):
     rms = torch.sqrt(torch.mean(x**2, dim=-1).clamp(min=1e-8))
     return rms
 
+import loudness
+
+def compute_loudness(x: torch.Tensor, sample_rate=44100):
+    B, C, T = x.shape
+    lufs_out=torch.zeros((x.shape[0], x.shape[1]), device=x.device)
+    for b in range(B):
+        x_i=x[b].cpu().numpy().T
+        lufs_in=loudness.integrated_loudness(x_i, sample_rate)
+        lufs_out[b] = torch.tensor(lufs_in, device=x.device)
+    
+    return lufs_out
+
 def compute_log_rms(x: torch.Tensor, **kwargs):
     """Compute root mean square energy.
 

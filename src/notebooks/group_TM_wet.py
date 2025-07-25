@@ -38,7 +38,7 @@ def group_classes(input_class, num_instr):
 
 
 
-path_TM="/data5/eloi/TencyMastering"
+path_TM="/data2/eloi/TencyMastering"
 subdirs=["part1","part2", "part3", "part4", "part4_test", "part4_validation"]
 
 

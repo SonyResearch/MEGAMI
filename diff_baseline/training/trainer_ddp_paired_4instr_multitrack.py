@@ -516,13 +516,13 @@ class Trainer():
             dist.barrier()  
 
         while True:
-            try:
-                self.train_step()
-            except Exception as e:
-                print("Error during training step:", e)
-                print("Skipping this step")
-                # If an error occurs, we skip the step and continue training
-                continue
+            #try:
+            self.train_step()
+            #except Exception as e:
+            #    print("Error during training step:", e)
+            #    print("Skipping this step")
+            #    # If an error occurs, we skip the step and continue training
+            #    continue
 
             if self.rank == 0:
                 self.update_ema()

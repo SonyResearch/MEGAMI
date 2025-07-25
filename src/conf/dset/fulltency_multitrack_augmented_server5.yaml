@@ -1,0 +1,130 @@
+
+train:
+  _target_: datasets.fulltency_multitrack.TencyMastering
+  mode: "dry-wet"
+  segment_length: 525312
+  fs: 44100
+  stereo: True
+
+  random_order: True
+  random_polarity: True
+
+  tracks: "all"
+
+  tency_path: "/data5/martinez/tency1_tency2_flac_48000k"
+  tencymastering_path: "/data5/eloi/TencyMastering"
+  path_csv: "/home/eloi/projects/project_mfm_eloi/data/train_split_tency.csv"
+
+  normalize_params:
+    #normalize_mode: "loudness_dry"
+    #loudness_dry: -18.0
+    normalize_mode: "rms_dry"
+    rms_dry: -25
+    #normalize_mode: Null
+
+  num_examples: -1
+
+  RMS_threshold_dB: -40.0
+
+  apply_augmentation: False
+ 
+  #random seed
+  seed: 42
+
+validation:
+  _target_: datasets.tency_mastering_multitrack_paired.TencyMastering_Test
+  mode: "dry-wet"
+
+  segment_length: 525312
+  fs: 44100
+  stereo: True
+  #num_tracks: 10
+  num_tracks: -1
+  #num_tracks: 5
+
+  tracks: "all"
+
+  path_csv: "/data5/eloi/TencyMastering/PANNs_country_pop/val_split.csv"
+
+  normalize_params:
+    #normalize_mode: "loudness_dry"
+    #loudness_dry: -18.0
+    normalize_mode: "rms_dry"
+    rms_dry: -25
+    #normalize_mode: Null
+
+  num_examples: -1
+
+
+  RMS_threshold_dB: -40.0
+ 
+  #random seed
+  seed: 42
+
+validation_2:
+  _target_: datasets.tency_mastering_multitrack_paired.TencyMastering_Test
+
+
+  mode: "dry-wet-train"
+  segment_length: 525312
+  fs: 44100
+  stereo: True
+
+  #num_tracks: 10
+  num_tracks: 36
+  #num_tracks: 5
+
+  tracks: "all"
+
+
+  path_csv: "/data5/eloi/TencyMastering/PANNs_country_pop/train_split.csv"
+
+  normalize_params:
+    #normalize_mode: "loudness_dry"
+    #loudness_dry: -18.0
+    normalize_mode: "rms_dry"
+    rms_dry: -25
+    #normalize_mode: "rms_dry"
+    #rms_dry: -18
+    #normalize_mode: Null
+
+  num_examples: -1
+
+  RMS_threshold_dB: -40.0
+ 
+  #random seed
+  seed: 42
+
+
+
+test:
+  _target_: datasets.tency_mastering_multitrack_paired.TencyMastering_Test
+
+
+  mode: "dry-wet"
+  segment_length: 525312
+  fs: 44100
+  stereo: True
+
+
+  tracks: "all"
+
+  path_csv: "/data5/eloi/TencyMastering/PANNs_country_pop/test_split.csv"
+
+  normalize_params:
+    #normalize_mode: "loudness_dry"
+    #loudness_dry: -18.0
+    normalize_mode: "rms_dry"
+    rms_dry: -25
+    #normalize_mode: Null
+
+  num_examples: 100
+
+
+  RMS_threshold_dB: -40.0
+ 
+  #random seed
+  seed: 42
+
+
+

@@ -37,6 +37,8 @@ from fx_model.apply_effects_multitrack_utils import simulate_effects
 
 from fx_model.apply_effects_multitrack_utils import multitrack_batched_processing, forward_reshaping
 
+from utils.data_utils import apply_loud_normalization
+
 # ----------------------------------------------------------------------------
 
 
@@ -210,7 +212,7 @@ class Trainer():
 
         self.losses = {} # This will be used to store the losses for logging
 
-        self.RMS_norm=self.args.exp.RMS_norm  # Use fixed RMS for evaluation, hardcoded for now
+        #self.RMS_norm=self.args.exp.RMS_norm  # Use fixed RMS for evaluation, hardcoded for now
         
 
 
@@ -378,6 +380,56 @@ class Trainer():
                 return norm_z
 
             self.FXenc=fxencode_fn
+        elif self.args.exp.FXenc_args.type=="fx_encoder2048+AFv4":
+            Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
+
+            from evaluation.feature_extractors import load_fx_encoder_plusplus_2048
+            feat_extractor = load_fx_encoder_plusplus_2048(Fxencoder_kwargs, self.device)
+
+            from utils.AF_features_embedding_v4 import AF_fourier_embedding
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def fxencode_fn(x):
+                """
+                x: tensor of shape [B, C, L] where B is the batch size, C is the number of channels and L is the length of the audio
+                """
+                z=feat_extractor(x)
+                z= torch.nn.functional.normalize(z, dim=-1, p=2)  # normalize to unit variance
+                z= z* math.sqrt(z.shape[-1])  # rescale to keep the same scale
+                #std is approz 1.7
+                #normalize to unit variance
+                #z=z/1.7
+
+                z_af,_=AFembedding.encode(x)
+                #embedding is l2 normalized, normalize to unit variance
+                z_af=z_af* math.sqrt(z_af.shape[-1])  # rescale to keep the same scale
+
+                #concatenate z and z_af (rescaling with sqrt(dim) to keep the same scale)
+
+
+
+                z_all= torch.cat([z, z_af], dim=-1)
+
+                #now L2 normalize
+
+                #return torch.nn.functional.normalize(z_all, dim=-1, p=2)
+                norm_z= z_all/ math.sqrt(z_all.shape[-1])  # normalize by dividing by sqrt(dim) to keep the same scale
+
+                return norm_z
+            
+            def get_log_rms_from_z(z):
+
+                z = z * math.sqrt(z.shape[-1])  # rescale to keep the same scale
+                AF=z[...,2048:]  # assuming the AF features are the last 2048 dimensions
+                AF=AF/ math.sqrt(AF.shape[-1])  # normalize to unit variance
+
+                features= AFembedding.decode(AF)
+                log_rms=features[0]
+
+                return log_rms
+
+            self.FXenc=fxencode_fn
+            self.get_log_rms_from_z=get_log_rms_from_z  
         elif self.args.exp.FXenc_args.type=="fx_encoder2048+AFv3":
             Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
 
@@ -1211,20 +1263,6 @@ class Trainer():
         return x
 
 
-    def apply_RMS_normalization(self, x, RMS=None):
-
-        if RMS is None:
-            RMS= torch.tensor(self.RMS_norm, device=x.device).view(1, 1, 1).repeat(x.shape[0],1,1)  # Use fixed RMS for evaluation
-        else:
-            RMS= RMS.view(-1, 1, 1)  
-
-        x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
-
-        gain= RMS - x_RMS
-        gain_linear = 10 ** (gain / 20 + 1e-5)  # Convert dB gain to linear scale, adding a small value to avoid division by zero
-        x=x* gain_linear.view(-1, 1, 1)
-
-        return x
     
 
     def train_step(self):
@@ -1261,7 +1299,7 @@ class Trainer():
                 y = y.expand(-1, 2, -1)
             
             #RMS normalization of x and y
-            x= self.apply_RMS_normalization(x)  # apply RMS normalization to x
+            x= apply_loud_normalization(x)  # apply RMS normalization to x
 
             z=self.FXenc(y)
             if z.isnan().any():
@@ -1270,7 +1308,7 @@ class Trainer():
             print("z shape", z.shape)
 
             if self.args.exp.rms_normalize_y:
-                y_norm= self.apply_RMS_normalization(y)  # apply RMS normalization to y
+                y_norm= apply_loud_normalization(y)  # apply RMS normalization to y
             else:
                 y_norm = y
 
@@ -1419,10 +1457,10 @@ class Trainer():
                         x = x.mean(dim=1, keepdim=True).expand(-1, 2, -1)  # expand to [B*N, 1, L] to keep the shape consistent
                     
                     #RMS normalization of x and y
-                    x= self.apply_RMS_normalization(x)  # apply RMS normalization to x
+                    x= apply_loud_normalization(x)  # apply RMS normalization to x
 
                     #rms normalization of y to match the training data.. hardcoded... please change this later
-                    y= self.apply_RMS_normalization(y)  # apply RMS normalization to y
+                    y= apply_loud_normalization(y)  # apply RMS normalization to y
 
 
                     z=self.FXenc(y)

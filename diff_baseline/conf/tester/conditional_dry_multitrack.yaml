@@ -19,7 +19,7 @@ sampling_params:
   sde_hp:
     sigma_data: 0.1 #default for maestro
     sigma_min: 5e-4
-    sigma_max: 20 #this is sigma_start
+    sigma_max: 100 #this is sigma_start
     rho: 10
   Schurn: 0
   Snoise: 1
