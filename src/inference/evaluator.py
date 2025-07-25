@@ -11,6 +11,7 @@ import utils.training_utils as tr_utils
 import torch
 from utils.collators import collate_multitrack_paired
 from datasets.tency_mastering_multitrack_paired import TencyMastering_Test
+from datasets.eval_benchmark import Eval_Benchmark
 import omegaconf
 import math
 
@@ -20,6 +21,7 @@ from sklearn.manifold import TSNE
 from utils.log import make_PCA_figure
 from utils.data_utils import apply_RMS_normalization
 
+import pandas as pd
 
 #os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 #sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
@@ -28,10 +30,12 @@ from utils.data_utils import apply_RMS_normalization
 ### Loading EffectsDiT ###
 
 class Evaluator:
-    def __init__(self, method="stylediffpipeline", method_args=None, dataset_code=None, extra_id=None, path_results="/data5/eloi/results"):
+    def __init__(self, method="stylediffpipeline", method_args=None, dataset_code=None, extra_id=None, path_results="/data5/eloi/results", num_tracks_to_load=1):
 
         self.method=method
         self.method_args = method_args
+
+        self.results_df = pd.DataFrame(columns=["track", "method","metric", "value" ])
 
         if method=="stylediffpipeline":
             self.S1_code = method_args.S1_code
@@ -46,6 +50,9 @@ class Evaluator:
             self.path_results = path_results
             self.path_results = f"{self.path_results}/{self.experiment_name}"
             os.makedirs(self.path_results, exist_ok=True)
+
+            self.csv_path = f"{self.path_results}/results.csv"
+
         
             self.config_file_rel="../conf"
             #self.config_path="/home/eloi/projects/project_mfm_eloi/src/conf"
@@ -58,10 +65,32 @@ class Evaluator:
         else:
             raise ValueError(f"Unknown method: {method}")
     
-        self.load_dataset()  # Load the dataset
+
+        self.load_dataset(num_tracks_to_load=num_tracks_to_load)  # Load the dataset
         
         self.anchors=["equal_loudness", "only_rms"]
-        self.metrics=["lh-FxEnc++", "pairwise-FxEnc++", "lh-S1", "pairwise-S1"]
+        self.metrics=[
+            "pairwise-spectral",
+            "pairwise-panning",
+            "pairwise-dynamic",
+            "pairwise-loudness",
+            "pairwise-fxenc++",
+            "pairwise-MSS",
+            "lh-spectral",
+            "lh-panning",
+            "lh-dynamic",
+            "lh-loudness",
+            "lh-fxenc++",
+            "lh-MSS",
+            "percentile-spectral",
+            "percentile-panning",
+            "percentile-dynamic",
+            "percentile-loudness",
+            "percentile-fxenc++",
+            "percentile-MSS",
+            "lh-genfxenc++",
+            "percentile-genfxenc++",
+            ]
 
         self.anchor_fns = {}
         for anchor in self.anchors:
@@ -69,14 +98,18 @@ class Evaluator:
                 self.anchor_fns[anchor] = self.prepare_equal_loudness_anchor(target_lufs_dB=-48.0)
             elif anchor == "only_rms":
                 self.anchor_fns[anchor] = self.prepare_only_rms_anchor()
-    
 
 
     def load_S1_model(self):
         if self.S1_code == "S9":
             config_name="conf_S9_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
             model_dir="/data5/eloi/checkpoints/S9"
-            ckpt="1C_tencymastering_vocals-110000.pt"
+            #ckpt="1C_tencymastering_vocals-110000.pt"
+            ckpt="1C_tencymastering_vocals-160000.pt"
+        elif self.S1_code == "S20":
+            config_name="conf_S20.yaml"
+            model_dir="/data5/eloi/checkpoints/S20"
+            ckpt="1C_tencymastering_vocals-135000.pt"
         else:
             raise ValueError(f"Unknown S1_code: {self.S1_code}")
         
@@ -110,7 +143,7 @@ class Evaluator:
         if self.S2_code == "MF3wet":
             config_name="conf_MF3wet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
             model_dir="/data5/eloi/checkpoints/MF3wet"
-            ckpt="mapper_blackbox_TCN-110000.pt"
+            ckpt="mapper_blackbox_TCN-165000.pt"
         else:
             raise ValueError(f"Unknown S2_code: {self.S2_code}")
 
@@ -140,7 +173,7 @@ class Evaluator:
             self.fx_normalizer= lambda x: x  # identity function if no fx_normalizer is specified
 
 
-    def load_dataset(self):
+    def load_dataset(self, num_tracks_to_load=1):
         ### Loading dataset ###
 
         normalize_params=omegaconf.OmegaConf.create(
@@ -153,7 +186,7 @@ class Evaluator:
 
         if self.dataset_code == "TencyMastering_train":
             num_examples= 64  # use all examples
-            num_tracks= 1
+            num_tracks= num_tracks_to_load
             self.dataset= TencyMastering_Test(
                mode= "dry-wet",
                segment_length= 525312,
@@ -169,7 +202,7 @@ class Evaluator:
             )
         elif self.dataset_code == "TencyMastering_val":
             num_examples= 64  # use all examples
-            num_tracks= 10
+            num_tracks= num_tracks_to_load
             self.dataset= TencyMastering_Test(
                mode= "dry-wet",
                segment_length= 525312,
@@ -185,13 +218,29 @@ class Evaluator:
             )
         elif self.dataset_code == "TencyMastering_val_randomFx":
             num_examples= 64  # use all examples
-            num_tracks= 1
+            num_tracks= num_tracks_to_load
             self.dataset= TencyMastering_Test(
                mode= "dry-wet",
                segment_length= 525312,
                fs= 44100,
                stereo= True,
                num_tracks=num_tracks,
+               tracks="all",
+               path_csv= "/data5/eloi/TencyMastering/PANNs_country_pop/train_split.csv",
+               normalize_params=normalize_params,
+               num_examples= num_examples, #use all examples
+               RMS_threshold_dB= -40.0,
+               seed= 42,
+               apply_randomFx_to_dry= True, #if True, random effects are applied to the samples
+               RIR_path_csv="/data5/eloi/ImpulseResponses/rir_files_val.csv",
+            )
+        elif self.dataset_code == "MDX_TM_benchmark":
+            self.dataset= Eval_Benchmark(
+               mode= "dry-wet",
+               segment_length= 525312,
+               fs= 44100,
+               stereo= True,
+               num_tracks=num_tracks_to_load,
                tracks="all",
                path_csv= "/data5/eloi/TencyMastering/PANNs_country_pop/train_split.csv",
                normalize_params=normalize_params,
@@ -264,14 +313,10 @@ class Evaluator:
             #x_norm= x.mean(dim=1, keepdim=True)  # Stereo to mono
             x=apply_RMS_normalization(x,-25.0, device=self.device)
 
-            print("preparing only_rms_anchor")
             y_final=self.apply_rms(x, z)  # Apply RMS normalization to the generated audio
 
 
-            print("y_final shape:", y_final.shape)
-
             y_final=y_final.sum(dim=0, keepdim=False)  # Sum the tracks to get a single output
-            print("y_final shape after mean:", y_final.shape)
 
             return y_final
 

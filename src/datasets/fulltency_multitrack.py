@@ -20,6 +20,7 @@ from tqdm import tqdm
 
 from utils.data_utils import taxonomy2track
 
+from utils.common_audioeffects import AugmentationChain, ConvolutionalReverb, Compressor, Equaliser, Panner, Haas, Gain
 
 def trackname2taxonomy(tracks):
     """
@@ -473,6 +474,8 @@ class TencyMastering(torch.utils.data.IterableDataset):
         random_order=False,
         random_polarity=False,
         only_dry=False, #if True, only dry files are used, if False, both dry and wet files are used
+        apply_augmentation=False,
+        RIR_path_csv="/data5/eloi/ImpulseResponses/rir_files_train.csv",
         ):
 
         super().__init__()
@@ -536,6 +539,37 @@ class TencyMastering(torch.utils.data.IterableDataset):
         self.df=pd.read_csv(self.path_csv)
 
 
+        self.apply_augmentation=apply_augmentation
+
+        if self.apply_augmentation:
+            df= pd.read_csv(RIR_path_csv)
+            RIR_files = df['rir_file'].tolist()
+            print(RIR_files[:10])
+    
+            acceoted_sampling_rates = [44100]
+    
+            dataset_rir=pd.DataFrame(columns=['impulse_response'])
+            dataset_rir=pd.DataFrame(columns=['impulse_response'])
+            for i, file in enumerate(RIR_files):
+                #load the RIR file
+                x,fs=sf.read(file)
+                n_samples=x.shape[0]
+                if len(x.shape) == 1:
+                    x = x[:, None]
+                my_tuple=(int(n_samples), x)
+                #add my_tuple to the dataset_rir DataFrame (column 'impulse_response')
+                dataset_rir.loc[i, 'impulse_response'] = my_tuple
+
+            self.augment_chain= AugmentationChain([
+                        (ConvolutionalReverb(impulse_responses=dataset_rir, sample_rates=acceoted_sampling_rates), 0.5),
+                        (Haas(sample_rates=acceoted_sampling_rates), 0.5),
+                        (Gain(), 0.8),
+                        (Panner(sample_rates=acceoted_sampling_rates), 0.5),
+                        (Compressor(sample_rates=acceoted_sampling_rates), 0.5),
+                        (Equaliser(n_channels=2,sample_rates=acceoted_sampling_rates), 0.5),
+                        ],
+                        shuffle=True, apply_to='target')
+
     def __iter__(self):
 
         
@@ -548,6 +582,8 @@ class TencyMastering(torch.utils.data.IterableDataset):
             row=self.df.iloc[num]
 
             subdir=row["subdir"]
+            if subdir=="TencyMastering":
+                print("trying to yield from", subdir)
 
             path=row["path"]
 
@@ -632,8 +668,26 @@ class TencyMastering(torch.utils.data.IterableDataset):
                 selected_tracks_wet=selected_tracks_wet[indices]
             else:
                 raise NotImplementedError("random_order must be used")
+
+            if self.apply_augmentation:
+                #apply augmentation
+                augmented_tracks = []
+                for i in range(selected_tracks_wet.shape[0]):
+                    track_i= selected_tracks_wet[i]
+                    _, track_augmented=self.augment_chain(track_i.cpu().numpy().T, track_i.cpu().numpy().T)
+                    track_augmented = torch.from_numpy(track_augmented.T).float().to(track_i.device)
+                    assert track_augmented.shape == track_i.shape, "augment_target shape must match x_wet shape, got {} and {}".format(augment_target.shape, x_wet.shape)
+                    augmented_tracks.append(track_augmented)
+                
+                augmented_tracks = torch.stack(augmented_tracks, dim=0)
+
+                yield selected_tracks_wet, augmented_tracks, path, fs
             
-            yield  selected_tracks_wet, path, fs
+            else:
+                if subdir=="TencyMastering":
+                    print("yielding from", subdir)
+            
+                yield  selected_tracks_wet, None, path, fs
 
 
 

@@ -22,11 +22,11 @@ train:
     rms_dry: -25
     #normalize_mode: Null
 
-
-
   num_examples: -1
 
   RMS_threshold_dB: -40.0
+
+  apply_augmentation: False
  
   #random seed
   seed: 42

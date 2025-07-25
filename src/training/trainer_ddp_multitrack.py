@@ -398,6 +398,7 @@ class Trainer():
         collated_data = collate_multitrack_train(data, max_tracks=self.args.exp.max_tracks, sample_rate=self.args.exp.sample_rate, segment_length=self.args.exp.audio_len, device=self.device)  # collate the data, this will pad the data to the maximum number of tracks in the batch
 
         y=collated_data['y']  # x is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+        y_augmented= collated_data['y_augmented']  # y_augmented is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
         masks=collated_data['masks']  # masks is a tensor of shape [B, N] where B is the batch size and N is the number of tracks, it is used to mask the tracks that are not present in the batch
 
         #print("x shape", x.shape, "cluster shape", cluster.shape, "taxonomy ", taxonomy, "masks shape", masks.shape)
@@ -405,7 +406,7 @@ class Trainer():
         #print("x rms", 20* torch.log10(x.std(dim=(2, 3)) + 1e-6))
 
 
-        return y, masks
+        return y, y_augmented, masks
 
 
 
@@ -415,7 +416,8 @@ class Trainer():
         self.optimizer.zero_grad()
 
 
-        y, masks = self.get_batch()
+        y, y_augmented, masks = self.get_batch()
+
 
         if torch.isnan(y).any():
             raise ValueError("Input tensor contains NaN values")
@@ -425,7 +427,7 @@ class Trainer():
 
         a = time.time()
 
-        error, sigma, x_norm, y = self.diff_params.loss_fn(self.network, sample=y, context=None, ema=self.ema, clusters=None,  masks=masks, compile=self.args.exp.compile)
+        error, sigma, x_norm, y = self.diff_params.loss_fn(self.network, sample=y, sample_aug=y_augmented, ema=self.ema, clusters=None,  masks=masks, compile=self.args.exp.compile)
 
         loss = error.mean(dim=1)
         loss = loss.mean()
@@ -540,13 +542,13 @@ class Trainer():
             dist.barrier()  
 
         while True:
-            try:
-                self.train_step()
-            except Exception as e:
-                print("Error during training step:", e)
-                print("Skipping this step")
-                # If an error occurs, we skip the step and continue training
-                continue
+            #try:
+            self.train_step()
+            #except Exception as e:
+            #    print("Error during training step:", e)
+            #    print("Skipping this step")
+            #    # If an error occurs, we skip the step and continue training
+            #    continue
 
             if self.rank == 0:
                 self.update_ema()

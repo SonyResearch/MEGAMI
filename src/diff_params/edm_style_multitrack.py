@@ -383,7 +383,7 @@ class EDM_Style_Multitrack(EDM):
             raise NotImplementedError("Only AFxRep is implemented for now")
 
 
-    def loss_fn(self, net,  sample=None, context=None, clusters=None, taxonomy=None, masks=None, compile=False,*args, **kwargs):
+    def loss_fn(self, net,  sample=None,  sample_aug=None, context=None, clusters=None, taxonomy=None, masks=None, compile=False,*args, **kwargs):
         """
         Loss function, which is the mean squared error between the denoised latent and the clean latent
         Args:
@@ -398,7 +398,10 @@ class EDM_Style_Multitrack(EDM):
         t = self.sample_time_training(y.shape[0]).to(y.device)
 
         if self.context_signal == "wet":
-            context = y.clone()  # use the wet signal as context
+            if sample_aug is not None:
+                context = sample_aug
+            else:
+                context = y.clone()  # use the wet signal as context
 
         else:
             assert context is not None, "Context must be provided if context_signal is not 'wet'"

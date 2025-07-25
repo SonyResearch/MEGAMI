@@ -37,12 +37,14 @@ python train_multitrack.py --config-name=$conf  \
   exp.num_workers=10 \
   exp.resume=True \
   exp.compile=True \
-  dset.validation.num_tracks=16 \
-  dset.validation_2.num_tracks=16 \
+  dset.validation.num_tracks=0 \
+  dset.validation_2.num_tracks=0 \
   exp.batch_size=8 \
   exp.max_tracks=14 \
+  exp.optimizer.lr=1e-5 \
+  diff_params.CLAP_args.noise_sigma=0.011 \
   logging=base_logging_1C \
-  logging.log=True \
+  logging.log=False \
   #dset.validation.num_tracks=10 \
   #dset.validation_2.num_tracks=10 \
 

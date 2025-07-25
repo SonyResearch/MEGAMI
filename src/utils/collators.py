@@ -66,8 +66,13 @@ def collate_multitrack_sim(batch, max_tracks=None):
 def collate_multitrack_train(batch, max_tracks=None, sample_rate=None, segment_length=None, device=None):
 
         x= [ data_i[0] for data_i in batch ]  # x is a list of tensors, each tensor is a track
-        paths=[ data_i[1] for data_i in batch ]  # paths is a list of paths to the audio files, each path is a string
-        fs= [ data_i[2] for data_i in batch ]  # fs is a list of sample rates, each sample rate is an integer
+        if batch[0][1] is not None:
+            x_augmented= [ data_i[1] for data_i in batch ]  # y_augmented is a list of tensors, each tensor is a track
+        else:
+            x_augmented= None
+
+        paths=[ data_i[2] for data_i in batch ]  # paths is a list of paths to the audio files, each path is a string
+        fs= [ data_i[3] for data_i in batch ]  # fs is a list of sample rates, each sample rate is an integer
 
         if max_tracks is None:
             max_tracks = max(track.shape[0] for track in x)  # Find the maximum number of tracks in the batch
@@ -79,6 +84,8 @@ def collate_multitrack_train(batch, max_tracks=None, sample_rate=None, segment_l
                     if x[i].shape[0] > max_tracks:
                         print("cropping x[i] to max_tracks")
                         x[i] = x[i][:max_tracks]
+                        if x_augmented is not None:
+                            x_augmented[i] = x_augmented[i][:max_tracks] 
 
         is_x_none= any(x_i is None for x_i in x)
 
@@ -87,17 +94,25 @@ def collate_multitrack_train(batch, max_tracks=None, sample_rate=None, segment_l
         #now resample audio to 44100 Hz and cut to segment length
         for i in range(len(x)):
             x[i] = x[i].to(device)  # Move to device
+            if x_augmented is not None:
+                x_augmented[i] = x_augmented[i].to(device)
             if fs[i] != sample_rate:
                 if fs[i] == 48000 and sample_rate == 44100:
                     #print(f"Resampling audio from {fs[i]} Hz to {sample_rate} Hz")
                     x[i]=torchaudio.functional.resample(x[i], orig_freq=160, new_freq=147)
+                    if x_augmented is not None:
+                        x_augmented[i]=torchaudio.functional.resample(x_augmented[i], orig_freq=160, new_freq=147)
                 else:
                     #print(f"Resampling audio from {fs[i]} Hz to {sample_rate} Hz")
                     x[i]=torchaudio.functional.resample(x[i], fs[i], sample_rate)
+                    if x_augmented is not None:
+                        x_augmented[i]=torchaudio.functional.resample(x_augmented[i], fs[i], sample_rate)
 
             assert segment_length is not None, "segment_length should be set to the length of the audio segment in samples"
             if x[i].shape[-1] > segment_length:
                 x[i] = x[i][..., :segment_length]
+                if x_augmented is not None:
+                    x_augmented[i] = x_augmented[i][..., :segment_length]
             elif x[i].shape[-1] < segment_length:
                 raise ValueError(f"Audio length {x[i].shape[-1]} is less than segment length {segment_length}. Please check your data.")
 
@@ -105,12 +120,18 @@ def collate_multitrack_train(batch, max_tracks=None, sample_rate=None, segment_l
         padded_x = []
         masks = torch.zeros((len(x), max_tracks), dtype=torch.bool)  # Create a mask tensor
 
+        if x_augmented is not None:
+            padded_x_augmented = []
+
         for i in range(len(x)):
             if not is_x_none:
                 current_x = x[i]
             
             # Get current number of tracks
             current_tracks = current_x.shape[0]
+            if x_augmented is not None:
+                current_tracks_augmented = x_augmented[i].shape[0]
+                assert current_tracks == current_tracks_augmented, f"Number of tracks in x ({current_tracks}) does not match number of tracks in y_augmented ({current_tracks_augmented})"
 
             masks[i, :current_tracks] = 1  # Set mask for current tracks
             
@@ -126,20 +147,28 @@ def collate_multitrack_train(batch, max_tracks=None, sample_rate=None, segment_l
 
                 if not is_x_none:
                     padded_x.append(F.pad(current_x, pad_size))
+                
+                if x_augmented is not None:
+                    current_x_augmented = x_augmented[i]
+                    padded_x_augmented.append(F.pad(current_x_augmented, pad_size))
             
             elif current_tracks > max_tracks :
                 raise ValueError(f"Number of tracks {current_tracks} exceeds maximum allowed {max_tracks}. that is impossible")
             else:
                 if not is_x_none:
                     padded_x.append(current_x)
+                if x_augmented is not None:
+                    padded_x_augmented.append(current_x_augmented)
 
 
         if not is_x_none:
             x_stacked = torch.stack(padded_x, dim=0)  # Shape: [B, max_tracks, C, L]
-
+            if x_augmented is not None:
+                x_augmented_stacked = torch.stack(padded_x_augmented, dim=0)
 
         return {
             'y': x_stacked.to(device),  # Shape: [B, max_tracks, C, L]
+            'y_augmented': x_augmented_stacked.to(device) if x_augmented is not None else None,  # Shape: [B, max_tracks, C, L]
             "masks": masks.to(device),  # Shape: [B, max_tracks]
             "paths": paths,
             "fs": fs

@@ -38,8 +38,8 @@ def group_classes(input_class, num_instr):
 
 
 
-path_TM="/data5/eloi/TencyMastering"
-subdirs=["part1","part2", "part3", "part4", "part4_test", "part4_validation"]
+path_TM="/data5/eloi/test_set/TM_tracks"
+#subdirs=["part1","part2", "part3", "part4", "part4_test", "part4_validation"]
 
 
 
@@ -48,8 +48,10 @@ dir_dry="dry_multi"
 
 do_selection=True
 
-for subdir in subdirs:
-    path=os.path.join(path_TM, subdir)
+
+#for subdir in subdirs:
+if True:
+    path=os.path.join(path_TM)
 
     #Iterate over each subdirectory
     ids = glob(os.path.join(path,  "*"))
@@ -70,7 +72,6 @@ for subdir in subdirs:
             #    continue
             #else:
             #    print(f"Processing {id}")
-    
     
             if not os.path.exists(path_in):
                 raise FileNotFoundError(f"Input directory {path_in} does not exist")
