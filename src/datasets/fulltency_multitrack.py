@@ -1,7 +1,7 @@
 
 import torch.nn.functional as F
 import pandas as pd
-import pyloudnorm as pyln
+#import pyloudnorm as pyln
 import soundfile as sf
 import torch
 import numpy as np
@@ -190,6 +190,7 @@ class TencyMastering_Test(torch.utils.data.Dataset):
         self.num_tracks=num_tracks
 
         if self.normalize_mode=="loudness_dry":
+            raise NotImplementedError
             meter = pyln.Meter(fs)
             def normaliser_fn(x):
                 x=x.numpy().T
@@ -582,8 +583,6 @@ class TencyMastering(torch.utils.data.IterableDataset):
             row=self.df.iloc[num]
 
             subdir=row["subdir"]
-            if subdir=="TencyMastering":
-                print("trying to yield from", subdir)
 
             path=row["path"]
 
@@ -684,8 +683,6 @@ class TencyMastering(torch.utils.data.IterableDataset):
                 yield selected_tracks_wet, augmented_tracks, path, fs
             
             else:
-                if subdir=="TencyMastering":
-                    print("yielding from", subdir)
             
                 yield  selected_tracks_wet, None, path, fs
 

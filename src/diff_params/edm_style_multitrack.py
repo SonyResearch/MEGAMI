@@ -37,6 +37,7 @@ class EDM_Style_Multitrack(EDM):
         fxnormaug_train=None,
         fxnormaug_inference=None,
         AE_type=None,
+        use_gated_RMSnorm=False,
         *args,
         **kwargs
         ):
@@ -48,6 +49,8 @@ class EDM_Style_Multitrack(EDM):
         self.device=device
 
         self.context_signal=context_signal
+
+        self.use_gated_RMSnorm=use_gated_RMSnorm
 
         self.apply_fxnormaug = apply_fxnormaug
         self.fxnormaug_train = fxnormaug_train
@@ -335,6 +338,94 @@ class EDM_Style_Multitrack(EDM):
             self.FXenc=fxencode_fn
             self.FXenc_compiled=torch.compile(fxencode_fn)
             self.FXenc_reshape=reshape_fn       
+        elif FXenc_args.type=="fx_encoder2048+AFv4":
+            Fxencoder_plusplus_args=kwargs.get("fx_encoder_plusplus_args", None)
+
+            from utils.load_features import load_fx_encoder_plusplus_2048
+            feat_extractor = load_fx_encoder_plusplus_2048(Fxencoder_plusplus_args, self.device)
+
+            from utils.AF_features_embedding_v4 import AF_fourier_embedding
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def fxencode_fn(x):
+                """
+                x: tensor of shape [B, C, L] where B is the batch size, C is the number of channels and L is the length of the audio
+                """
+                z=feat_extractor(x)
+                z=torch.nn.functional.normalize(z, dim=-1, p=2)
+                z=z*math.sqrt(z.shape[-1])  # rescale to keep the same scale
+
+                z_af,_=AFembedding.encode(x)
+                z_af=z_af* math.sqrt(z_af.shape[-1])  # rescale to keep the same scale
+
+
+                z_all= torch.cat([z, z_af], dim=-1)
+
+                #now L2 normalize
+
+                norm_z= z_all/ math.sqrt(z_all.shape[-1])  # normalize by dividing by sqrt(dim) to keep the same scale
+                #norm_z=torch.nn.functional.normalize(norm_z, dim=-1, p=2)  # L2 normalize
+
+                norm_z=norm_z.view(norm_z.shape[0], 64, -1)  # Reshape to [B, 64, L//64] where L//64 is the number of frames
+
+                return norm_z
+
+            def reshape_fn(embed):
+                """
+                embed: tensor of shape [B, 64, L//64] where B is the batch size
+                """
+                embed=embed.view(embed.shape[0], -1)
+
+                return embed
+
+
+            self.FXenc=fxencode_fn
+            self.FXenc_compiled=torch.compile(fxencode_fn)
+            self.FXenc_reshape=reshape_fn       
+        elif FXenc_args.type=="fx_encoder2048+AFv5":
+            Fxencoder_plusplus_args=kwargs.get("fx_encoder_plusplus_args", None)
+
+            from utils.load_features import load_fx_encoder_plusplus_2048
+            feat_extractor = load_fx_encoder_plusplus_2048(Fxencoder_plusplus_args, self.device)
+
+            from utils.AF_features_embedding_v5 import AF_fourier_embedding
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def fxencode_fn(x):
+                """
+                x: tensor of shape [B, C, L] where B is the batch size, C is the number of channels and L is the length of the audio
+                """
+                z=feat_extractor(x)
+                z=torch.nn.functional.normalize(z, dim=-1, p=2)
+                z=z*math.sqrt(z.shape[-1])  # rescale to keep the same scale
+
+                z_af,_=AFembedding.encode(x)
+                z_af=z_af* math.sqrt(z_af.shape[-1])  # rescale to keep the same scale
+
+
+                z_all= torch.cat([z, z_af], dim=-1)
+
+                #now L2 normalize
+
+                norm_z= z_all/ math.sqrt(z_all.shape[-1])  # normalize by dividing by sqrt(dim) to keep the same scale
+                #norm_z=torch.nn.functional.normalize(norm_z, dim=-1, p=2)  # L2 normalize
+
+                norm_z=norm_z.view(norm_z.shape[0], 64, -1)  # Reshape to [B, 64, L//64] where L//64 is the number of frames
+
+                return norm_z
+
+            def reshape_fn(embed):
+                """
+                embed: tensor of shape [B, 64, L//64] where B is the batch size
+                """
+                embed=embed.view(embed.shape[0], -1)
+
+                return embed
+
+
+            self.FXenc=fxencode_fn
+            self.FXenc_compiled=torch.compile(fxencode_fn)
+            self.FXenc_reshape=reshape_fn       
         elif FXenc_args.type=="fx_encoder2048+AFv3":
             Fxencoder_plusplus_args=kwargs.get("fx_encoder_plusplus_args", None)
 
@@ -405,10 +496,13 @@ class EDM_Style_Multitrack(EDM):
 
         else:
             assert context is not None, "Context must be provided if context_signal is not 'wet'"
+        
+        a=time.time
 
         with torch.no_grad():
             
             y_style=self.style_encode(y, compile=compile, masks=masks, taxonomy=taxonomy)
+            #print("style encode time:", time.time()-start)
             #print("y styke std", y_style.std())
 
             #print("Style encoding took", time.time()-start, "seconds")
@@ -423,6 +517,8 @@ class EDM_Style_Multitrack(EDM):
                     mask = torch.rand(z.shape[0], device=z.device) < self.cfg_dropout_prob
                     z = torch.where(mask.view(-1,1,1,1), null_embed, z)
 
+            #print("Transform forward took", time.time()-start, "seconds")
+
             input, target, cnoise = self.prepare_train_preconditioning(y_style, t )
 
 
@@ -433,6 +529,7 @@ class EDM_Style_Multitrack(EDM):
 
         #print("input shape", input.shape, "cnoise shape", cnoise.shape, "z shape", z.shape)
         estimate = net(input, cnoise, cross_attn_cond=z, taxonomy=taxonomy, mask=masks, cross_attn_cond_mask=masks) 
+        #print("Network forward took", time.time()-start, "seconds")
         #print("net forward took", time.time()-start, "seconds")
         
         if target.ndim==2 and estimate.ndim==3:
@@ -570,7 +667,7 @@ class EDM_Style_Multitrack(EDM):
                     x = -x
 
             #rms normalize context to -25 dB
-            x= apply_RMS_normalization(x, -25, device=self.device)
+            x= apply_RMS_normalization(x, -25, device=self.device, use_gate=self.use_gated_RMSnorm)
 
             if self.apply_fxnormaug:
                 if is_test:

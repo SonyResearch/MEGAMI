@@ -415,9 +415,13 @@ class Trainer():
 
         self.optimizer.zero_grad()
 
+        a = time.time()
 
         y, y_augmented, masks = self.get_batch()
 
+        print("y device", y.device)
+
+        print("get batch time:", time.time() - a    )
 
         if torch.isnan(y).any():
             raise ValueError("Input tensor contains NaN values")
@@ -425,15 +429,17 @@ class Trainer():
         if self.distributed:
             dist.barrier()
 
-        a = time.time()
 
         error, sigma, x_norm, y = self.diff_params.loss_fn(self.network, sample=y, sample_aug=y_augmented, ema=self.ema, clusters=None,  masks=masks, compile=self.args.exp.compile)
+        print("loss fn time:", time.time() - a)
 
         loss = error.mean(dim=1)
         loss = loss.mean()
 
         if not torch.isnan(loss).any():
             loss.backward()
+
+            print("backward time:", time.time() - a)    
 
             if self.args.exp.use_grad_clip:
                 torch.nn.utils.clip_grad_norm_(self.network.parameters(), self.args.exp.max_grad_norm)
@@ -542,13 +548,13 @@ class Trainer():
             dist.barrier()  
 
         while True:
-            #try:
-            self.train_step()
-            #except Exception as e:
-            #    print("Error during training step:", e)
-            #    print("Skipping this step")
-            #    # If an error occurs, we skip the step and continue training
-            #    continue
+            try:
+                self.train_step()
+            except Exception as e:
+                print("Error during training step:", e)
+                print("Skipping this step")
+                # If an error occurs, we skip the step and continue training
+                continue
 
             if self.rank == 0:
                 self.update_ema()

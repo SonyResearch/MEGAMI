@@ -2,7 +2,7 @@
 defaults:
   - dset: fulltency_multitrack_server5
   - network: Latent_DiT_M2L4_crossatt_multitrack_notaxonomy
-  - tester: evaluate_style_conditional_dry_multitrack_paired_Fxenc2048Fv4_fxnorm
+  - tester: evaluate_style_conditional_dry_multitrack_paired_Fxenc2048Fv5_fxnorm
   - logging: base_logging
 
 model_dir: "/data4/eloi/experiments/1C_tencymastering_vocals"
@@ -87,7 +87,7 @@ diff_params:
   AE_type: "CLAP" #used for encoding the context
 
   FXenc_args:
-    type: "fx_encoder2048+AFv4"
+    type: "fx_encoder2048+AFv5"
 
   sample_rate: 44100
 
@@ -116,7 +116,10 @@ diff_params:
 
   context_signal: "wet"
 
+  use_gated_RMSnorm: True
+
   apply_fxnormaug: False
+
   fxnormaug_train: Null
 
   fxnormaug_inference: Null

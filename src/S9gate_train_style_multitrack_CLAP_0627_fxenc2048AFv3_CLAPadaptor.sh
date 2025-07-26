@@ -5,12 +5,12 @@
 
 export HYDRA_FULL_ERROR=1 
 
-source ~/myenv/bin/activate
+source ~/myenv_clean/bin/activate
 
 # main config
-conf=conf_S9loud_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml
+conf=conf_S9gate_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml
 
-n="S9loud_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor"
+n="S9gate_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor"
 
 PATH_EXPERIMENT=/data5/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
@@ -21,7 +21,7 @@ mkdir -p $PATH_EXPERIMENT
 
 
 # Number of GPUs to use
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=2
 NUM_GPUS=1
 #MASTER_PORT=29500
 MASTER_PORT=29500
@@ -37,8 +37,8 @@ python train_multitrack.py --config-name=$conf  \
   exp.num_workers=10 \
   exp.resume=True \
   exp.compile=False \
-  dset.validation.num_tracks=0 \
-  dset.validation_2.num_tracks=0 \
+  dset.validation.num_tracks=16 \
+  dset.validation_2.num_tracks=16 \
   exp.batch_size=8 \
   exp.max_tracks=14 \
   exp.optimizer.lr=1e-5 \
