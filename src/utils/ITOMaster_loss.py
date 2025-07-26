@@ -651,13 +651,71 @@ def compute_rms(x: torch.Tensor, **kwargs):
     rms = torch.sqrt(torch.mean(x**2, dim=-1).clamp(min=1e-8))
     return rms
 
-import loudness
 
 def compute_loudness(x: torch.Tensor, sample_rate=44100):
+    #print("x shape:", x.shape)
+    B, C, T = x.shape
+    x=x.view(B*C, T)  # flatten batch and channel dimensions
+    #print("x std", x.std())
+    loudness= torchaudio.functional.loudness(x+1e-5, sample_rate=sample_rate)
+    #replace NaN, Inf, -Inf with some value, not 0, but something that wont break the model, -50
+    #loudness = torch.where(torch.isnan(loudness), torch.tensor(-50.0, device=x.device), loudness)
+
+    loudness = loudness.view(B, C)  # reshape back to (B, C)
+    return loudness
+
+def compute_log_rms_gated(x: torch.Tensor, sample_rate=44100, **kwargs):
+    """Compute gated log RMS energy.
+
+    Frames the signal in 400 ms windows with 75% overlap, computes RMS,
+    discards frames with RMS < -60 dBFS, and averages the log-RMS.
+
+    If all frames in a given (batch, channel) are below -60 dBFS,
+    returns -60 for that entry.
+
+    Args:
+        x: Tensor of shape (bs, c, seq_len)
+
+    Returns:
+        log_rms: Tensor of shape (bs, c)
+    """
+    seg_size = int(sample_rate * 0.4)
+    hop_size = int(sample_rate * 0.1)
+
+    # (bs, c, num_frames, seg_size)
+    x_frames = x.unfold(2, seg_size, hop_size)
+
+    # RMS over last dimension (seg_size)
+    rms = torch.sqrt((x_frames ** 2).mean(dim=-1))  # (bs, c, num_frames)
+
+    # dB conversion
+    rms_db = 20 * torch.log10(rms.clamp(min=1e-8))  # (bs, c, num_frames)
+
+    # Mask for frames above -60 dB
+    mask = rms_db > -60  # (bs, c, num_frames)
+    valid_frame_count = mask.sum(dim=2)  # (bs, c)
+
+    # Sum and average only valid frames
+    rms_masked = rms * mask.to(dtype=rms.dtype)  # (bs, c, num_frames)
+    rms_sum = rms_masked.sum(dim=2)  # (bs, c)
+
+    # Avoid division by zero by setting mean to any number (e.g. 1.0), will be overridden later
+    rms_mean = rms_sum / valid_frame_count.clamp(min=1)
+
+    # Log RMS
+    log_rms = 20 * torch.log10(rms_mean.clamp(min=1e-8))  # (bs, c)
+
+    # Set output to -60 where no frames were above threshold
+    all_masked = valid_frame_count == 0  # (bs, c)
+    log_rms[all_masked] = -60.0
+
+    return log_rms
+
+def compute_loudness_v2(x: torch.Tensor, sample_rate=44100):
     B, C, T = x.shape
     lufs_out=torch.zeros((x.shape[0], x.shape[1]), device=x.device)
     for b in range(B):
-        x_i=x[b].cpu().numpy().T
+        x_i=x[b].cpu().numpy().T+1e-5
         lufs_in=loudness.integrated_loudness(x_i, sample_rate)
         lufs_out[b] = torch.tensor(lufs_in, device=x.device)
     

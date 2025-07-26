@@ -1,6 +1,6 @@
 import torch
-from fxencoder_plusplus import FxEncoderPlusPlus
-from fxencoder_plusplus.model import get_model_path
+from utils.fxencoder_plusplus import FxEncoderPlusPlus
+from utils.fxencoder_plusplus.model import get_model_path
 
 
 def load_model(model_name="default", model_path=None, device="cuda", auto_download=True, cache_dir=None):

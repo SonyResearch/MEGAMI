@@ -1,4 +1,5 @@
 import soundfile as sf
+import torchaudio
 
 def read_wav_segment(file_path, start=None, end=None, dtype="float32"):
     """
@@ -103,7 +104,7 @@ def efficient_roll(x, shift, dims=-1):
     # Use index_select for the roll
     return torch.index_select(x, dims, indices)
 
-import loudness
+#import loudness
 import numpy as np
 
 def apply_loud_normalization(x, lufs=-23, sample_rate=44100,device=None):
@@ -121,14 +122,26 @@ def apply_loud_normalization(x, lufs=-23, sample_rate=44100,device=None):
         device = x.device
 
     x_out = torch.zeros_like(x)
-    for b in range(B):
-        x_i=x[b].cpu().numpy().T
-        lufs_in=loudness.integrated_loudness(x_i, sample_rate)
+    #for b in range(B):
+    #    x_i=x[b].cpu().numpy().T
+    #    lufs_in=loudness.integrated_loudness(x_i, sample_rate)
 
-        delta_loudness= lufs - lufs_in
-        gain=np.power(10, delta_loudness / 20)  # Convert dB to linear gain
+    #    delta_loudness= lufs - lufs_in
+    #    gain=np.power(10, delta_loudness / 20)  # Convert dB to linear gain
 
-        x_out[b] = torch.tensor(x_i.T * gain, device=device)
+    #    x_out[b] = torch.tensor(x_i.T * gain, device=device)
+
+    x=x.view(B* C,1, T)  # Ensure x is 3D
+
+    loudness=torchaudio.functional.loudness(x+1e-5, sample_rate=sample_rate)
+    delta_loudness = lufs - loudness
+    gain= torch.pow(10, delta_loudness / 20)  # Convert dB to linear gain
+    if gain.isnan().any():
+        print("NaN detected in gain, setting to -30 dB")
+        gain = torch.nan_to_num(gain, nan=-30.0)
+
+    x_out = x * gain.view(B * C, 1, 1)  # Apply gain to each channel
+
     
     x_out = x_out.view(in_shape)
 
@@ -136,19 +149,28 @@ def apply_loud_normalization(x, lufs=-23, sample_rate=44100,device=None):
 
 
 
+from utils.ITOMaster_loss import compute_log_rms_gated, compute_crest_factor, compute_stereo_width, compute_stereo_imbalance, compute_log_spread
 
-
-def apply_RMS_normalization(x, RMS_norm=-25, device=None):
+def apply_RMS_normalization(x, RMS_norm=-25, device=None, use_gate=False):
         if device is None:
             device = x.device
 
         RMS= torch.tensor(RMS_norm, device=device).view(1, 1, 1).repeat(x.shape[0],1,1)  # Use fixed RMS for evaluation
 
-        x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
+        x_RMS_ref=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
+        if use_gate:
+            x_RMS = compute_log_rms_gated(x).unsqueeze(-1)
+        else:
+            x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
+        
+        #print("ref RMS", x_RMS_ref.shape, x_RMS.shape)
 
         gain= RMS - x_RMS
         gain_linear = 10 ** (gain / 20 + 1e-6)  # Convert dB gain to linear scale, adding a small value to avoid division by zero
-        x=x* gain_linear.view(-1, 1, 1)
+        #print("x.shape", x.shape, "gain_linear.shape", gain_linear.shape)
+        x=x* gain_linear
+
+        #print("xshape", x.shape, "gain_linear", gain_linear.shape)
 
         return x
 

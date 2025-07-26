@@ -5,7 +5,7 @@
 
 export HYDRA_FULL_ERROR=1 
 
-source ~/myenv/bin/activate
+source ~/myenv_clean/bin/activate
 
 # main config
 conf=conf_S9_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml
@@ -37,8 +37,8 @@ python train_multitrack.py --config-name=$conf  \
   exp.num_workers=10 \
   exp.resume=True \
   exp.compile=True \
-  dset.validation.num_tracks=0 \
-  dset.validation_2.num_tracks=0 \
+  dset.validation.num_tracks=16 \
+  dset.validation_2.num_tracks=16 \
   exp.batch_size=8 \
   exp.max_tracks=14 \
   exp.optimizer.lr=1e-5 \

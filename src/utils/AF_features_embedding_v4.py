@@ -65,6 +65,7 @@ class AF_fourier_embedding:
     def encode(self, x):
 
         #log_rms=compute_log_rms(x)
+        #print("encoding loudness")
         loudness = compute_loudness(x)
         crest_factor= compute_crest_factor(x)
         log_spread= compute_log_spread(x)
@@ -126,7 +127,7 @@ class AF_fourier_embedding:
         stereo_width = stereo_width * self.stereo_width_scale + self.stereo_width_shift
         stereo_imbalance = stereo_imbalance * self.stereo_imbalance_scale + self.stereo_imbalance_shift
         
-        return log_rms, crest_factor, log_spread, stereo_width, stereo_imbalance
+        return loudness, crest_factor, log_spread, stereo_width, stereo_imbalance
         
     def transform(self, log_rms, crest_factor,log_spread, stereo_width, stereo_imbalance):
         """
