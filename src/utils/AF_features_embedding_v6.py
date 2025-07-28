@@ -1,5 +1,5 @@
 import math
-from utils.feature_extractors.dsp_features import compute_log_rms_gated, compute_crest_factor, compute_stereo_width, compute_stereo_imbalance, compute_log_spread
+from utils.feature_extractors.dsp_features import compute_log_rms_gated_v2, compute_crest_factor, compute_stereo_width, compute_stereo_imbalance, compute_log_spread
 import torch
 
 class AF_fourier_embedding:
@@ -64,7 +64,7 @@ class AF_fourier_embedding:
     
     def encode(self, x):
 
-        log_rms=compute_log_rms_gated(x)
+        log_rms=compute_log_rms_gated_v2(x)
         crest_factor= compute_crest_factor(x)
         log_spread= compute_log_spread(x)
         stereo_width= compute_stereo_width(x)

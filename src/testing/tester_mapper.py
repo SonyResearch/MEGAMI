@@ -29,6 +29,7 @@ from fx_model.distribution_presets.clusters_multitrack import get_distributions_
 from fx_model.distribution_presets.uniform import get_distributions_uniform
 
 from utils.collators import collate_multitrack_sim
+from utils.data_utils import apply_RMS_normalization
 
 class Tester():
     def __init__(
@@ -234,6 +235,90 @@ class Tester():
                 #std is approz 1.7
                 #normalize to unit variance
                 z=z/1.7
+
+                z_af,_=AFembedding.encode(x)
+                #embedding is l2 normalized, normalize to unit variance
+                z_af=z_af* math.sqrt(z_af.shape[-1])  # rescale to keep the same scale
+
+                #concatenate z and z_af (rescaling with sqrt(dim) to keep the same scale)
+
+                #z=z* math.sqrt(z.shape[-1]) 
+                #z_af=z_af* math.sqrt(z_af.shape[-1])
+
+
+
+                z_all= torch.cat([z, z_af], dim=-1)
+
+                #now L2 normalize
+
+                #return torch.nn.functional.normalize(z_all, dim=-1, p=2)
+                norm_z= z_all/ math.sqrt(z_all.shape[-1])  # normalize by dividing by sqrt(dim) to keep the same scale
+
+                return norm_z
+
+            self.FXenc=fxencode_fn
+        elif self.args.exp.FXenc_args.type=="fx_encoder2048+AFv5":
+            Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
+
+            from evaluation.feature_extractors import load_fx_encoder_plusplus_2048
+            feat_extractor = load_fx_encoder_plusplus_2048(Fxencoder_kwargs, self.device)
+
+            from utils.AF_features_embedding_v5 import AF_fourier_embedding
+
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def fxencode_fn(x):
+                """
+                x: tensor of shape [B, C, L] where B is the batch size, C is the number of channels and L is the length of the audio
+                """
+                z=feat_extractor(x)
+                z= torch.nn.functional.normalize(z, dim=-1, p=2)  # normalize to unit variance
+                z= z* math.sqrt(z.shape[-1])  # rescale to keep the same scale
+                #std is approz 1.7
+                #normalize to unit variance
+                #z=z/1.7
+
+                z_af,_=AFembedding.encode(x)
+                #embedding is l2 normalized, normalize to unit variance
+                z_af=z_af* math.sqrt(z_af.shape[-1])  # rescale to keep the same scale
+
+                #concatenate z and z_af (rescaling with sqrt(dim) to keep the same scale)
+
+                #z=z* math.sqrt(z.shape[-1]) 
+                #z_af=z_af* math.sqrt(z_af.shape[-1])
+
+
+
+                z_all= torch.cat([z, z_af], dim=-1)
+
+                #now L2 normalize
+
+                #return torch.nn.functional.normalize(z_all, dim=-1, p=2)
+                norm_z= z_all/ math.sqrt(z_all.shape[-1])  # normalize by dividing by sqrt(dim) to keep the same scale
+
+                return norm_z
+
+            self.FXenc=fxencode_fn
+        elif self.args.exp.FXenc_args.type=="fx_encoder2048+AFv6":
+            Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
+
+            from evaluation.feature_extractors import load_fx_encoder_plusplus_2048
+            feat_extractor = load_fx_encoder_plusplus_2048(Fxencoder_kwargs, self.device)
+
+            from utils.AF_features_embedding_v6 import AF_fourier_embedding
+
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def fxencode_fn(x):
+                """
+                x: tensor of shape [B, C, L] where B is the batch size, C is the number of channels and L is the length of the audio
+                """
+                z=feat_extractor(x)
+                z= torch.nn.functional.normalize(z, dim=-1, p=2)  # normalize to unit variance
+                z= z* math.sqrt(z.shape[-1])  # rescale to keep the same scale
+                #std is approz 1.7
+                #normalize to unit variance
+                #z=z/1.7
 
                 z_af,_=AFembedding.encode(x)
                 #embedding is l2 normalized, normalize to unit variance
@@ -477,17 +562,17 @@ class Tester():
 
         return metrics_dict
 
-    def apply_RMS_normalization(self, x):
+    #def apply_RMS_normalization(self, x):
 
-        RMS= torch.tensor(self.RMS_norm, device=x.device).view(1, 1, 1).repeat(x.shape[0],1,1)  # Use fixed RMS for evaluation
+    #    RMS= torch.tensor(self.RMS_norm, device=x.device).view(1, 1, 1).repeat(x.shape[0],1,1)  # Use fixed RMS for evaluation
 
-        x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
+    #    x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
 
-        gain= RMS - x_RMS
-        gain_linear = 10 ** (gain / 20 + 1e-6)  # Convert dB gain to linear scale, adding a small value to avoid division by zero
-        x=x* gain_linear.view(-1, 1, 1)
+    #    gain= RMS - x_RMS
+    #    gain_linear = 10 ** (gain / 20 + 1e-6)  # Convert dB gain to linear scale, adding a small value to avoid division by zero
+    #    x=x* gain_linear.view(-1, 1, 1)
 
-        return x
+    #    return x
 
     def apply_random_effects(self, x):
 
@@ -540,7 +625,7 @@ class Tester():
                     x = x.mean(dim=1, keepdim=True)  # expand to [B*N, 1, L] to keep the shape consistent
 
                 #RMS normalization of x and y
-                x= self.apply_RMS_normalization(x)  # apply RMS normalization to x
+                x= apply_RMS_normalization(x, use_gate=self.args.exp.use_gated_RMSnorm)
  
                 if self.args.exp.apply_fxnorm:
                     x=self.fx_normalizer(x)
@@ -580,10 +665,12 @@ class Tester():
                         print(f"Number of NaN values in sample_x: {num_nan} of {x.numel()}")
                     
 
-                if self.args.exp.rms_normalize_y:
-                    rms_y= torch.sqrt(torch.mean(y**2, dim=(-1), keepdim=True))
-                    # normalize preds to the same RMS as y
-                    preds= preds * (rms_y / torch.sqrt(torch.mean(preds**2, dim=(-1), keepdim=True) + 1e-6))
+                y= apply_RMS_normalization(y, use_gate=self.args.exp.use_gated_RMSnorm)
+
+                #if self.args.exp.rms_normalize_y:
+                #    rms_y= torch.sqrt(torch.mean(y**2, dim=(-1), keepdim=True))
+                #    # normalize preds to the same RMS as y
+                #    preds= preds * (rms_y / torch.sqrt(torch.mean(preds**2, dim=(-1), keepdim=True) + 1e-6))
 
 
                 for b in range(B):

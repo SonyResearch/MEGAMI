@@ -5,7 +5,7 @@ defaults:
   - tester: evaluate_style_conditional_dry_multitrack_paired_Fxenc2048Fv5_fxnorm
   - logging: base_logging
 
-model_dir: "/data4/eloi/experiments/1C_tencymastering_vocals"
+model_dir: "/data2/eloi/experiments/1C_tencymastering_vocals"
 
 
 
@@ -101,14 +101,14 @@ diff_params:
     rho: 10
 
   CLAP_args:
-    ckpt_path: "/data5/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
+    ckpt_path: "/data2/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
     distance_type: "cosine"
     normalize: True #if True, the features will be normalized
     use_adaptor: True #if True, the features will be adapted to the CLAP space
-    adaptor_checkpoint: "/data5/eloi/checkpoints/A2_CLAP_TM/MLP_CLAP_regressor-20000.pt"
+    adaptor_checkpoint: "/data2/eloi/checkpoints/A2_CLAP_TM/MLP_CLAP_regressor-20000.pt"
     adaptor_type: "MLP_CLAP_regressor"
     add_noise: True #if True, the features will be augmented with orthogonal noise
-    noise_sigma: 0.022 #sigma of the orthogonal noise to
+    noise_sigma: 0.011 #sigma of the orthogonal noise to
 
   fx_encoder_plusplus_args:
     distance_type: "cosine"

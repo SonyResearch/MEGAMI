@@ -8,9 +8,9 @@ export HYDRA_FULL_ERROR=1
 source ~/myenv/bin/activate
 
 # main config
-conf=conf_MF3loudwet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml
+conf=conf_S3gate_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP.yaml
 
-n="MF3loudwet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired"
+n="S3gate_sanity_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP"
 
 PATH_EXPERIMENT=/data2/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
@@ -32,12 +32,17 @@ MASTER_PORT=29500
 #  exp.optimizer.lr=1e-4 \
 #  exp.batch_size=4 \
 
-  python Mloud_train_mapper_blackbox_predictive.py --config-name=$conf  \
+python train_paired_multitrack.py --config-name=$conf  \
   model_dir=$PATH_EXPERIMENT \
+  exp.num_workers=10 \
   exp.resume=True \
-  exp.compile=False \
-  exp.num_workers=8 \
-  exp.batch_size=4 \
-  logging=base_logging_mapper
+  exp.compile=True \
+  exp.max_tracks=14 \
+  dset.validation.num_tracks=16 \
+  dset.validation_2.num_tracks=16 \
+  logging=base_logging_1C \
+  logging.log=True \
+  #dset.validation.num_tracks=10 \
+  #dset.validation_2.num_tracks=10 \
 
   #dset=tencymastering_vocals_server5 \

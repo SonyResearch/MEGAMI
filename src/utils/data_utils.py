@@ -149,7 +149,7 @@ def apply_loud_normalization(x, lufs=-23, sample_rate=44100,device=None):
 
 
 
-from utils.ITOMaster_loss import compute_log_rms_gated, compute_crest_factor, compute_stereo_width, compute_stereo_imbalance, compute_log_spread
+from utils.feature_extractors.dsp_features import compute_log_rms_gated_v2, compute_crest_factor, compute_stereo_width, compute_stereo_imbalance, compute_log_spread
 
 def apply_RMS_normalization(x, RMS_norm=-25, device=None, use_gate=False):
         if device is None:
@@ -159,7 +159,7 @@ def apply_RMS_normalization(x, RMS_norm=-25, device=None, use_gate=False):
 
         x_RMS_ref=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
         if use_gate:
-            x_RMS = compute_log_rms_gated(x).unsqueeze(-1)
+            x_RMS = compute_log_rms_gated_v2(x).unsqueeze(-1)
         else:
             x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
         

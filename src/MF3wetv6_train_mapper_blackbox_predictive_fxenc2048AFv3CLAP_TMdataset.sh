@@ -8,9 +8,9 @@ export HYDRA_FULL_ERROR=1
 source ~/myenv/bin/activate
 
 # main config
-conf=conf_MF3loudwet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml
+conf=conf_MF3wetv6_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml
 
-n="MF3loudwet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired"
+n="MF3wetv6_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired"
 
 PATH_EXPERIMENT=/data2/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
@@ -21,7 +21,7 @@ mkdir -p $PATH_EXPERIMENT
 
 
 # Number of GPUs to use
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 NUM_GPUS=1
 #MASTER_PORT=29500
 MASTER_PORT=29500
@@ -32,7 +32,7 @@ MASTER_PORT=29500
 #  exp.optimizer.lr=1e-4 \
 #  exp.batch_size=4 \
 
-  python Mloud_train_mapper_blackbox_predictive.py --config-name=$conf  \
+python M_train_mapper_blackbox_predictive.py --config-name=$conf  \
   model_dir=$PATH_EXPERIMENT \
   exp.resume=True \
   exp.compile=False \
