@@ -664,7 +664,7 @@ def compute_loudness(x: torch.Tensor, sample_rate=44100):
     loudness = loudness.view(B, C)  # reshape back to (B, C)
     return loudness
 
-def compute_log_rms_gated(x: torch.Tensor, sample_rate=44100, **kwargs):
+def compute_log_rms_gated(x: torch.Tensor, sample_rate=44100, threshold=-50, **kwargs):
     """Compute gated log RMS energy.
 
     Frames the signal in 400 ms windows with 75% overlap, computes RMS,
@@ -692,7 +692,7 @@ def compute_log_rms_gated(x: torch.Tensor, sample_rate=44100, **kwargs):
     rms_db = 20 * torch.log10(rms.clamp(min=1e-8))  # (bs, c, num_frames)
 
     # Mask for frames above -60 dB
-    mask = rms_db > -60  # (bs, c, num_frames)
+    mask = rms_db > threshold  # (bs, c, num_frames)
     valid_frame_count = mask.sum(dim=2)  # (bs, c)
 
     # Sum and average only valid frames
@@ -707,7 +707,7 @@ def compute_log_rms_gated(x: torch.Tensor, sample_rate=44100, **kwargs):
 
     # Set output to -60 where no frames were above threshold
     all_masked = valid_frame_count == 0  # (bs, c)
-    log_rms[all_masked] = -60.0
+    log_rms[all_masked] =  threshold
 
     return log_rms
 

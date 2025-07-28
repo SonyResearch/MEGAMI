@@ -667,7 +667,7 @@ class EDM_Style_Multitrack(EDM):
                     x = -x
 
             #rms normalize context to -25 dB
-            x= apply_RMS_normalization(x, -25, device=self.device, use_gate=self.use_gated_RMSnorm)
+            x= apply_RMS_normalization(x, -25, device=self.device)
 
             if self.apply_fxnormaug:
                 if is_test:
