@@ -9,7 +9,6 @@ from hydra import initialize, initialize_config_module, initialize_config_dir, c
 import utils.training_utils as tr_utils
 
 import torch
-from utils.collators import collate_multitrack_paired
 from datasets.tency_mastering_multitrack_paired import TencyMastering_Test
 from datasets.eval_benchmark import Eval_Benchmark
 import omegaconf
@@ -43,9 +42,9 @@ class Evaluator:
             self.dataset_code = dataset_code
         
             if extra_id is not None:
-                self.experiment_name = f"{self.S1_code}_{self.S2_code}_{self.dataset_code}"
+                self.experiment_name = f"{self.method}_{self.S1_code}_{self.S2_code}_{self.dataset_code}"
             else:
-                self.experiment_name = f"{self.S1_code}_{self.S2_code}_{self.dataset_code}_{extra_id}"
+                self.experiment_name = f"{self.method}_{self.S1_code}_{self.S2_code}_{self.dataset_code}_{extra_id}"
         
             self.path_results = path_results
             self.path_results = f"{self.path_results}/{self.experiment_name}"
@@ -102,14 +101,12 @@ class Evaluator:
 
     def load_S1_model(self):
         if self.S1_code == "S9":
+            #config_name="conf_S9gate_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
             config_name="conf_S9_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
-            model_dir="/data5/eloi/checkpoints/S9"
-            #ckpt="1C_tencymastering_vocals-110000.pt"
+            #model_dir="/data2/eloi/checkpoints/S9gate"
+            model_dir="/data2/eloi/checkpoints/S9"
             ckpt="1C_tencymastering_vocals-160000.pt"
-        elif self.S1_code == "S20":
-            config_name="conf_S20.yaml"
-            model_dir="/data5/eloi/checkpoints/S20"
-            ckpt="1C_tencymastering_vocals-135000.pt"
+            #ckpt="1C_tencymastering_vocals-290000.pt"
         else:
             raise ValueError(f"Unknown S1_code: {self.S1_code}")
         
@@ -141,9 +138,12 @@ class Evaluator:
         ### Loading effects model ###
 
         if self.S2_code == "MF3wet":
+            #config_name="conf_MF3gatewet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
             config_name="conf_MF3wet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
-            model_dir="/data5/eloi/checkpoints/MF3wet"
-            ckpt="mapper_blackbox_TCN-165000.pt"
+            #model_dir="/data2/eloi/checkpoints/MF3gatewet"
+            model_dir="/data2/eloi/checkpoints/MF3wet"
+            #ckpt="mapper_blackbox_TCN-300000.pt"
+            ckpt="mapper_blackbox_TCN-180000.pt"
         else:
             raise ValueError(f"Unknown S2_code: {self.S2_code}")
 
@@ -185,6 +185,7 @@ class Evaluator:
 
 
         if self.dataset_code == "TencyMastering_train":
+            raise NotImplementedError("TencyMastering_train is not implemented yet")
             num_examples= 64  # use all examples
             num_tracks= num_tracks_to_load
             self.dataset= TencyMastering_Test(
@@ -201,6 +202,7 @@ class Evaluator:
                seed= 42
             )
         elif self.dataset_code == "TencyMastering_val":
+            raise NotImplementedError("TencyMastering_val is not implemented yet")
             num_examples= 64  # use all examples
             num_tracks= num_tracks_to_load
             self.dataset= TencyMastering_Test(
@@ -217,6 +219,7 @@ class Evaluator:
                seed= 42
             )
         elif self.dataset_code == "TencyMastering_val_randomFx":
+            raise NotImplementedError("TencyMastering_val_randomFx is not implemented yet")
             num_examples= 64  # use all examples
             num_tracks= num_tracks_to_load
             self.dataset= TencyMastering_Test(
@@ -236,19 +239,13 @@ class Evaluator:
             )
         elif self.dataset_code == "MDX_TM_benchmark":
             self.dataset= Eval_Benchmark(
-               mode= "dry-wet",
+               mode= "dry-wet-mixture",
                segment_length= 525312,
                fs= 44100,
-               stereo= True,
-               num_tracks=num_tracks_to_load,
-               tracks="all",
-               path_csv= "/data5/eloi/TencyMastering/PANNs_country_pop/train_split.csv",
-               normalize_params=normalize_params,
-               num_examples= num_examples, #use all examples
-               RMS_threshold_dB= -40.0,
-               seed= 42,
-               apply_randomFx_to_dry= True, #if True, random effects are applied to the samples
-               RIR_path_csv="/data5/eloi/ImpulseResponses/rir_files_val.csv",
+               num_tracks=10,
+               num_examples=-1,
+               num_segments_per_track=1,
+               path="/data2/eloi/test_set/MDX_TM_benchmark",
             )
         else:
             raise ValueError(f"Unknown dataset_code: {self.dataset_code}")
@@ -269,9 +266,7 @@ class Evaluator:
             Normalize all tracks to have equal loudness.
             x: tensor of shape [N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
             """
-            B, N, C, L = x.shape  # N is the number of tracks, C is the number of channels and L is the length of the audio
-            assert B==1
-            x=x[0]  # Get the first batch element, which is a tensor of
+            N, C, L = x.shape  # N is the number of tracks, C is the number of channels and L is the length of the audio
 
             norm_tracks = []
 
@@ -306,9 +301,8 @@ class Evaluator:
             Normalize all tracks to have the same RMS level.
             x: tensor of shape [N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
             """
-            B, N, C, L = x.shape
-            assert B==1
-            x=x[0]
+            N, C, L = x.shape
+            B=1
 
             #x_norm= x.mean(dim=1, keepdim=True)  # Stereo to mono
             x=apply_RMS_normalization(x,-25.0, device=self.device)
@@ -393,7 +387,8 @@ class Evaluator:
 
 
         def generate_Fx(x, input_type="dry",num_samples=1, T=30, cfg_scale=1.0, Schurn=10):
-            B, N, C, L = x.shape  # B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+            N, C, L = x.shape  # B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+            B=1
         
         
             shape=self.sampler.diff_params.default_shape
@@ -402,13 +397,12 @@ class Evaluator:
             masks_fwd= torch.ones((B, N), dtype=torch.bool, device=self.device)  # Create masks for all tracks, assuming all tracks are present
             masks_diff= torch.ones((num_samples, N), dtype=torch.bool, device=self.device)  # Create masks for all tracks, assuming all tracks are present
         
-            print("T", T)
             self.sampler.T=T
             self.sampler.Schurn=Schurn  # Set the Schurn parameter for the sampler
         
             with torch.no_grad():
                 is_wet= "wet" in input_type
-                cond, x_preprocessed=self.sampler.diff_params.transform_forward(x,  is_condition=True, is_test=True, masks=masks_fwd, is_wet=is_wet)
+                cond, x_preprocessed=self.sampler.diff_params.transform_forward(x.unsqueeze(0),  is_condition=True, is_test=True, masks=masks_fwd, is_wet=is_wet)
                 cond=cond.expand(shape[0], -1, -1,-1)  # Expand the condition to match the batch size
                 preds, noise_init = self.sampler.predict_conditional(shape, cond=cond.contiguous(), cfg_scale=cfg_scale, device=self.device,  masks=masks_diff)
         
@@ -417,23 +411,25 @@ class Evaluator:
         self.generate_Fx=lambda x, num_samples : generate_Fx(x, input_type="wet", num_samples=num_samples, T=self.method_args.T, cfg_scale=self.method_args.cfg_scale, Schurn=self.method_args.Schurn)
 
 
+        from utils.feature_extractors.dsp_features import compute_log_rms_gated, compute_log_rms
+
         def apply_rms(y_hat, z_pred):
             """
             Apply RMS normalization to the generated audio y_hat based on the predicted features z_pred.
             """
             pred_logrms=get_log_rms_from_z(z_pred)  # get the log RMS from the generated features
+            pred_rms= 10 ** (pred_logrms / 20)  # convert log RMS to linear scale
 
-            rms_y=10**(pred_logrms.unsqueeze(-1)/20)  # Convert log RMS to linear scale
+            #log_rms_y_hat= compute_log_rms_gated(y_hat)  # compute the log RMS of the generated audio
+            log_rms_y_hat= compute_log_rms(y_hat)  # compute the log RMS of the generated audio
+            rms_y_hat= 10 ** (log_rms_y_hat / 20)  # convert log RMS to linear scale
+            
+            gain= pred_rms / (rms_y_hat + 1e-6)  # Compute the gain to apply to the generated audio
 
-            gain= rms_y / torch.sqrt(torch.mean(y_hat**2, dim=(-1), keepdim=True) + 1e-6)  # Compute the gain to apply to the generated audio
+            print("pred_rms", pred_rms.shape, "rms_y_hat", rms_y_hat.shape, "gain", gain.shape)
+            print("y_hat shape", y_hat.shape)
 
-            print("rms_y hat ", torch.sqrt(torch.mean(y_hat**2, dim=(-1), keepdim=True) + 1e-6))
-
-            print("gain", gain, gain.shape, "y_hat shape", y_hat.shape, "rms_y", rms_y.shape)
-
-            y_final= y_hat * gain
-
-            print("rms_y ", rms_y, "rms_result", torch.sqrt(torch.mean(y_final**2, dim=(-1), keepdim=True) + 1e-6))
+            y_final= y_hat * gain.unsqueeze(-1)
 
             return y_final
         
@@ -441,7 +437,8 @@ class Evaluator:
 
         def apply_effects(x, z_pred):
 
-            x_norm= x[0].mean(dim=1, keepdim=True)  # Normalize the input audio by its mean across the tracks
+            x_norm= x.mean(dim=1, keepdim=True)  # Normalize the input audio by its mean across the tracks
+
             x_norm=apply_RMS_normalization(x_norm,-25.0, device=self.device)
 
             x_norm=self.fx_normalizer(x_norm)  # Apply the fx_normalizer if specified
@@ -456,55 +453,55 @@ class Evaluator:
         self.apply_effects=apply_effects
         
 
-    def run_evaluation(self):
+    def run_evaluation_paired(self):
+
             """
+
             Run the evaluation on the validation set
+
             """
 
             ### Run evaluation on the validation set ###
-
             for i in range(len(self.dataset)):
 
+                datav=self.dataset[i]
 
+                x_dry, y_wet , mixture, track_id, segment_id= datav 
 
-                datav=self.dataset[i],
-                collated_data= collate_multitrack_paired(datav)
-                x=collated_data['x'].to(self.device)  # x is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
-                y=collated_data['y'].to(self.device)  # y is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+                x_dry=x_dry.to(self.device)
+                y_wet=y_wet.to(self.device)
+                mixture=mixture.to(self.device)
+
+                print("x_dry shape", x_dry.shape, "mixture shape", mixture.shape, "track_id", track_id, "segment_id", segment_id)
+
+                z_ref=self.FxEnc(y_wet)  # z_y is a tensor of shape [B, N, D] where D is the dimension of the features (2048 + 2048 = 4096)
             
-                z_ref=self.FxEnc(y[0])  # z_y is a tensor of shape [B, N, D] where D is the dimension of the features (2048 + 2048 = 4096)
-            
-                mixture=y.sum(dim=1, keepdim=False)
-            
-                #from IPython.display import Audio, display
-                sf.write(f"{self.path_results}/ref_{i}.wav", mixture[0].cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
-            
-                y_final=self.apply_effects(x, z_ref)  # Apply the effects to the input audio
+
+                y_final=self.apply_effects(x_dry, z_ref)  # Apply the effects to the input audio
             
                 y_hat_mixture=y_final.sum(dim=0, keepdim=False)
-                #a=Audio(y_hat_mixture.cpu().clamp(-1,1), rate=44100, normalize=False)  # Play the first track of the generated audio
-                sf.write(f"{self.path_results}/ref_blackbox_{i}.wav", y_hat_mixture.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')  # Save the generated audio
+
+                sf.write(f"{self.path_results}/oracle_{i}.wav", y_hat_mixture.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')  # Save the generated audio
 
                 if "equal_loudness" in self.anchor_fns:
-                    y_equal_loudness=self.anchor_fns["equal_loudness"](x)  # Apply the equal loudness anchor
+                    y_equal_loudness=self.anchor_fns["equal_loudness"](x_dry)  # Apply the equal loudness anchor
                     sf.write(f"{self.path_results}/anchor_equal_loudness_{i}.wav", y_equal_loudness.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
             
-                preds=self.generate_Fx(x, 5) 
+                preds=self.generate_Fx(x_dry, 5) 
                 z_pred=self.embedding_post_processing(preds)  # post-process the generated features
             
                 for j in range(z_pred.shape[0]):
-                    y_final=self.apply_effects(x.clone(), z_pred[j])  # Apply the effects to the input audio
+                    y_final=self.apply_effects(x_dry.clone(), z_pred[j])  # Apply the effects to the input audio
                 
                     y_hat_mixture=y_final.sum(dim=0, keepdim=False)
                 
                     sf.write(f"{self.path_results}/pred_blackbox_{i}_{j}.wav", y_hat_mixture.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
 
                     if "only_rms" in self.anchor_fns:
-                        y_rms_anchor=self.anchor_fns["only_rms"](x.clone(), z_pred[j])
+                        y_rms_anchor=self.anchor_fns["only_rms"](x_dry.clone(), z_pred[j])
                         sf.write(f"{self.path_results}/anchor_only_rms_{i}_{j}.wav", y_rms_anchor.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
-            
 
-                preds=self.generate_Fx(x,  100 ) 
+                preds=self.generate_Fx(x_dry,  100 ) 
                 preds=self.embedding_post_processing(preds)  # post-process the generated features
             
                 # Step 1: Optional PCA preprocessing (recommended for high dimensions)

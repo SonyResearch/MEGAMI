@@ -153,334 +153,180 @@ class Eval_Benchmark(torch.utils.data.Dataset):
 
     def __init__(self,
         fs=44100,
-        segment_length=131072,
+        segment_length=525312,
         num_tracks=-1,
-        mode="dry-wet",
-        normalize_params=None,
-        stereo=True,
-        num_examples=4,
-        RMS_threshold_dB=-40,
-        x_as_mono=False,
-        seed=42,
-        tracks="all",
-        path_csv=None,
+        num_examples=-1,
+        num_segments_per_track=-1,
+        mode="dry-wet", #dry-wet, dry-only, dry-mixture, dry-wet-mixture 
+        format="all_tracks", #all_tracks, 4instr
         only_dry=False, #if True, only dry files are used, if False, both dry and wet files are used
-        random_order=False, #if True, the order of the samples is randomized
-        apply_randomFx_to_dry= False, #if True, random effects are applied to the samples
-        RIR_path_csv="/data5/eloi/ImpulseResponses/rir_files_val.csv",
+        random_order_examples=False, #if True, the order of the samples is randomized
+        random_order_tracks=False, #if True, the order of the tracks is randomized
+        path=None,
+        RMS_threshold_dB=-40,
         ):
 
         super().__init__()
-        print(num_examples, "num_examples")
-
-        np.random.seed(seed)
-        random.seed(seed)
-
 
         self.segment_length=segment_length
         self.fs=fs
 
-        self.only_dry=only_dry
+        self.mode=mode
+        self.format=format
 
-        self.random_order=random_order
+        self.random_order_examples=random_order_examples
+        self.random_order_tracks=random_order_tracks
 
-
-        self.normalize_mode=normalize_params.normalize_mode
-
-        self.stereo=stereo
-
+        self.num_examples=num_examples
         self.num_tracks=num_tracks
 
-        if self.normalize_mode=="loudness_dry":
-            meter = pyln.Meter(fs)
-            def normaliser_fn(x):
-                x=x.numpy().T
-                ln=meter.integrated_loudness(x)
-                #replace -Infinity with -50 dB
-                if ln == -np.inf:
-                    ln = -50.0
-                x=pyln.normalize.loudness(x, ln, normalize_params.loudness_dry)
-                x=torch.from_numpy(x.T).float()
-                return x
-
-            self.normaliser = normaliser_fn
-
-        elif self.normalize_mode=="rms_dry":
-            RMS_target=normalize_params.rms_dry #-16 dB
-            def normaliser_fn(x):
-                RMS=20*torch.log10(torch.sqrt(torch.mean(x ** 2, dim=-1).mean(dim=-1)))
-                scaler=10**((RMS_target-RMS)/20)
-                x=x*scaler.view(-1,1)
-                return x, scaler.view(-1,1)
-
-            self.normaliser = normaliser_fn
-            
-        elif self.normalize_mode is None:
-            self.normaliser = lambda x: x
-        
-
-        self.x_as_mono=x_as_mono
-
-        self.RMS_threshold_dB=RMS_threshold_dB
-
-        self.get_RMS=lambda x: 20 * torch.log10(torch.sqrt(torch.mean(x ** 2, dim=-1)))
 
         self.test_samples = []
 
+        self.path=path
+
+        self.RMS_threshold_dB=RMS_threshold_dB
+        self.get_RMS=lambda x: 20 * torch.log10(torch.sqrt(torch.mean(x ** 2, dim=-1)))
+
         counter=0
 
-        self.tracks=tracks
-        assert self.tracks=="all", "only all model is implemented for now"
+        #glob directories that are children of the path
 
-        self.path_csv=path_csv
-        assert self.path_csv is not None, "path_csv must be provided"
+        self.song_dirs= sorted(glob.glob(os.path.join(self.path, "*")))
 
-        self.df=pd.read_csv(self.path_csv)
-
-        if self.num_tracks != -1:
-            self.df = self.df.sample(n=self.num_tracks, random_state=seed)
-        else:
-            self.df = self.df.sample(frac=1, random_state=seed)
-
-        num_skips=0
-
-        if apply_randomFx_to_dry:
-            df= pd.read_csv(RIR_path_csv)
-            #list of RIR files
-            RIR_files = df['rir_file'].tolist()
-
-            acceoted_sampling_rates = [44100]
-            dataset_rir=pd.DataFrame(columns=['impulse_response'])
-            for i, file in enumerate(RIR_files):
-                #load the RIR file
-                x,fs=sf.read(file)
-                n_samples=x.shape[0]
-                if len(x.shape) == 1:
-                    x = x[:, None]
-                my_tuple=(int(n_samples), x)
-                #add my_tuple to the dataset_rir DataFrame (column 'impulse_response')
-                dataset_rir.loc[i, 'impulse_response'] = my_tuple
+        if self.mode=="dry-wet" or self.mode=="dry-wet-mixture":
+            #only TM tracks are available
+            self.song_dirs = [d for d in self.song_dirs if "TM" in os.path.basename(d)]
 
 
-            self.augment_chain= AugmentationChain([
-                    (ConvolutionalReverb(impulse_responses=dataset_rir, sample_rates=acceoted_sampling_rates), 0.5),
-                    (Haas(sample_rates=acceoted_sampling_rates), 0.5),
-                    (Gain(), 0.8),
-                    (Panner(sample_rates=acceoted_sampling_rates), 0.5),
-                    (Compressor(sample_rates=acceoted_sampling_rates), 0.5),
-                    (Equaliser(n_channels=2,sample_rates=acceoted_sampling_rates), 0.5),
-                    ],
-                    shuffle=True, apply_to='target')
+        for song_dir in tqdm(self.song_dirs):
+
+            song_id= os.path.basename(song_dir)
+
+            #glob all the subdirectories corresponding to segments:
+
+            segment_subdirs = sorted(glob.glob(os.path.join(song_dir, "*")))
+
+            for i, segment_subdir in enumerate(segment_subdirs):
+
+                if i>=num_segments_per_track and num_segments_per_track!=-1:
+                    break
 
 
-        for row in tqdm(self.df.iterrows()):
+                segment_id= os.path.basename(segment_subdir)
 
-            skip_iteration = False
+                if self.format == "4instr":
+                    dry_path= os.path.join(segment_subdir, "dry_4instr")
+                elif self.format == "all_tracks":
+                    dry_path= os.path.join(segment_subdir, "dry_multi")
 
-            path=row[1]["path"] 
+                dry_files= glob.glob(os.path.join(dry_path, "*.wav"))
 
-            dry_path=os.path.join(path, "dry_multi")
-            wet_path=os.path.join(path, "multi")
+                if self.format == "4instr":
+                    assert len(dry_files) ==4 , "No dry files found in {}".format(dry_path)
+                elif self.format == "all_tracks":
+                    assert len(dry_files) > 0, "No dry files found in {}".format(dry_path)
 
-            files= glob.glob(os.path.join(dry_path, "*.wav"))
-            if len(files)==0:
-                print("no dry files found in", dry_path)
-                num_skips+=1
-                continue
-            files_taxonomy = [os.path.basename(f)[:4] for f in files]
+                x_dry_tracks=[]
+
+                if "wet" in self.mode:
+                    if self.format == "4instr":
+                        wet_path= os.path.join(segment_subdir, "wet_4instr")
+                    elif self.format == "all_tracks":
+                        wet_path= os.path.join(segment_subdir, "multi")
+
+                    files_wet= glob.glob(os.path.join(wet_path, "*.wav"))
+
+                    if self.format == "4instr":
+                        assert len(files_wet) == 4, "No wet files found in {}".format(wet_path)
+                    elif self.format == "all_tracks":
+                        assert len(files_wet) > 0, "No wet files found in {}".format(wet_path)
+
+                    x_wet_tracks=[]
 
 
-            if self.tracks == "all":
-                #filter files by tracks
-                dry_files=[]
-                wet_files=[]
-                taxonomies=[]
-                for i, file_taxonomy in enumerate(files_taxonomy):
-                    dry_files.append(files[i])
-                    taxonomies.append(file_taxonomy)
-                    wet_file = os.path.join(wet_path, files[i].split("/")[-1])
-                    assert os.path.exists(wet_file), "wet file does not exist: {}".format(wet_file)
-                    wet_files.append(wet_file)
-            else:
-                raise NotImplementedError("all mode is only implemented for now")
-                target_taxonomies= trackname2taxonomy(self.tracks)
-                dry_files=[]
-                for track_id in target_taxonomies:
-                    #check if the track_id is in the files_taxonomy list. It should start with the track_id (first of the 4 characters)
-                    found_i=False
-                    for i, file_taxonomy in enumerate(files_taxonomy):
-                        if file_taxonomy.startswith(str(track_id)):
-                            found_i=True
-                            dry_files.append(files[i])
-                            #if there is more than one, we ignore the rest, it is OK as the dataset is synthetic
-                            break
-                    if not found_i:
-                        skip_iteration = True
-                        print("track not found in", dry_path, "for track", track_id)
-                        print("tracks", self.tracks)
-                        print("files_taxonomy", files_taxonomy)
-
-            if skip_iteration:
-                num_skips+=1
-                continue
-
-            assert len(dry_files) > 0, "no dry files found in {}".format(dry_path)
-            assert len(dry_files) == len(taxonomies), "number of dry files and taxonomies must match, got {} and {}".format(len(dry_files), len(taxonomies))
-            assert len(wet_files) == len(dry_files), "number of wet files and dry files must match, got {} and {}".format(len(wet_files), len(dry_files))
-        
-            for i, (dry_file, wet_file) in enumerate(zip(dry_files, wet_files)):
-
-                out=load_audio(str(dry_file), stereo=self.stereo)
-                if out is None:
-                    skip_iteration = True
-                    print("Could not load dry audio file: {}".format(dry_file))
-                    continue
-
-                x_dry_long, fs=out
-                assert fs==self.fs, "wrong sampling rate: {}".format(fs)
-
-                x_dry_long = x_dry_long.mean(0, keepdim=True)
-
-                if not self.only_dry:
-                    out=load_audio(str(wet_file), stereo=self.stereo)
+                for f in dry_files:
+                    out=load_audio(str(f), stereo=True)
                     if out is None:
-                        skip_iteration = True
-                        print("Could not load wet audio file: {}".format(wet_file))
-                        continue
-                    
-                    x_wet_long, fs=out
+                        raise ValueError("Could not load dry audio file: {}".format(f))
+                    x_dry, fs=out
                     assert fs==self.fs, "wrong sampling rate: {}".format(fs)
-                
-                if i==0:
-                    if not self.only_dry:
-                        if x_dry_long.shape[-1]<x_wet_long.shape[-1]:
-                            x_wet_long= x_wet_long[..., :x_dry_long.shape[-1]]
-                        elif x_dry_long.shape[-1]>x_wet_long.shape[-1]:
-                            x_dry_long = x_dry_long[..., :x_wet_long.shape[-1]]
 
-                        x_all_wet=torch.zeros((len(dry_files),2, x_dry_long.shape[-1]), dtype=torch.float32)
-                        x_all_wet[i]=x_wet_long
-
-                    x_all=torch.zeros((len(dry_files),2, x_dry_long.shape[-1]), dtype=torch.float32)
-                    x_all[i]=x_dry_long
-
-                    x_sum=x_dry_long
-
-                else:
-                    if x_dry_long.shape[-1]<x_all.shape[-1]:
-                        padding = x_all.shape[-1] - x_dry_long.shape[-1]
-                        x_dry_long = torch.nn.functional.pad(x_dry_long, (0, padding))
-                    elif x_dry_long.shape[-1]>x_all.shape[-1]:
-                        #pas
-                        x_dry_long = x_dry_long[..., :x_all.shape[-1]]
-
-                    x_all[i] = x_dry_long
-                    x_sum+=x_dry_long
+                    assert x_dry.shape[-1]== self.segment_length, "x_dry must be of length segment_length, got {}".format(x_dry.shape[-1])
                     
-                    if not self.only_dry:
-                        if x_wet_long.shape[-1]<x_all_wet.shape[-1]:
-                            padding = x_all_wet.shape[-1] - x_wet_long.shape[-1]
-                            x_wet_long = torch.nn.functional.pad(x_wet_long, (0, padding))
-                        elif x_wet_long.shape[-1]>x_all_wet.shape[-1]:
-                            #pas
-                            x_wet_long = x_wet_long[..., :x_all_wet.shape[-1]]
-                        x_all_wet[i] = x_wet_long
+                    #stereo to mono
+                    x_dry = x_dry.mean(dim=0, keepdim=True)
 
-                    
+                    if self.format == "all_tracks":
+                        #discard tracks with no enouugh energy
+                        RMS_dB=self.get_RMS(x_dry.mean(0))
+                        if RMS_dB<self.RMS_threshold_dB:
+                            continue
 
-            if not self.only_dry:
-                alignment_file=Path(dry_files[0]).parent.parent / "alignment.pickle"
-                alignment_data = pickle.load(open(alignment_file, "rb"))
-                dry_align=alignment_data.get("dry_alignment",0)
-                x_all=torch.roll(x_all, shifts=int(dry_align), dims=-1)
-                x_sum= torch.roll(x_sum, shifts=int(dry_align), dims=-1)
+                    x_dry_tracks.append(x_dry)
 
-            
-            max_length = x_sum.size(-1)
-            max_length = (max_length + self.segment_length - 1) // self.segment_length * self.segment_length
+                    if "wet" in self.mode:
+                        wet_file = os.path.join(wet_path, os.path.basename(f))
+                        out=load_audio(str(wet_file), stereo=True)
+                        if out is None:
+                            raise ValueError("Could not load wet audio file: {}".format(wet_file))
+                        x_wet, fs=out
+                        assert fs==self.fs, "wrong sampling rate: {}".format(fs)
+                        assert x_wet.shape[-1]== self.segment_length, "x_wet must be of length segment_length, got {}".format(x_wet.shape[-1])
 
-            x_all = torch.nn.functional.pad(x_all, (0, max_length - x_all.size(-1)), mode='constant', value=0)
-            if not self.only_dry:
-                x_all_wet = torch.nn.functional.pad(x_all_wet, (0, max_length - x_all_wet.size(-1)), mode='constant', value=0)
-            x_sum = torch.nn.functional.pad(x_sum, (0, max_length - x_sum.size(-1)), mode='constant', value=0)
+                        x_wet_tracks.append(x_wet)
 
-            assert x_all.size(-1)% self.segment_length == 0, "x_dry_long must be a multiple of segment_length, got {}".format(x_all.size(-1))
-            if not self.only_dry:
-                assert x_all_wet.size(-1)% self.segment_length == 0, "x_wet_long must be a multiple of segment_length, got {}".format(x_all_wet.size(-1))
-            assert x_sum.size(-1)% self.segment_length == 0, "x_dry_long must be a multiple of segment_length, got {}".format(x_sum.size(-1))
-            
+                assert len(x_dry_tracks) > 0, "No dry tracks found in {}".format(dry_path)
 
-            for i in range(0, x_sum.size(-1), self.segment_length):
-                x_all_i= x_all[..., i:i+self.segment_length]
-                if not self.only_dry:
-                    x_all_wet_i= x_all_wet[..., i:i+self.segment_length]
-                x_sum_i= x_sum[..., i:i+self.segment_length]
+                if "wet" in self.mode:
+                    assert len(x_dry_tracks)==len(x_wet_tracks) 
 
-                skip_segment=False
-                selected_tracks = torch.ones((x_all_i.shape[0],), dtype=torch.bool)
+                x_dry_all=torch.stack(x_dry_tracks, dim=0)
+                print("x_dry_all", x_dry_all.shape)
 
-                for i in range(x_all_i.shape[0]):
-                    RMS_dB=self.get_RMS(x_all_i[i].mean(0))
-                    if RMS_dB<self.RMS_threshold_dB:
-                        #remove track if it is below the threshold
-                        selected_tracks[i]=False
-                
-                if selected_tracks.sum() == 0:
-                    skip_segment=True
-                if skip_segment:
-                    continue
+                if "wet" in self.mode:
+                    x_wet_all=torch.stack(x_wet_tracks, dim=0)
+                    print("x_wet_all", x_wet_all.shape)
 
-                #now remove the tracks that are not selected
-                x_all_i = x_all_i[selected_tracks]
-                if not self.only_dry:
-                    x_all_wet_i = x_all_wet_i[selected_tracks]
-                taxonomies_selected = [taxonomies[i] for i in range(len(taxonomies)) if selected_tracks[i]]
-                        
-                if self.normalize_mode is not None:
 
-                    if "dry" in self.normalize_mode:
-                        #potentially slow
-                        x_sum_i, scaler=self.normaliser(x_sum_i)
-                        
-                        x_all_i*=scaler.unsqueeze(0)
 
-                        assert not torch.isnan(x_all).any(), "NaN values found in x_all after normalization"
-
-                    else:
-                        pass
-
-                if self.random_order:
+                if self.random_order_tracks:
                     #randomly shuffle the tracks
-                    indices = torch.randperm(x_all_i.shape[0])
-                    x_all_i=x_all_i[indices]
-                    if not self.only_dry:
-                        x_all_wet_i=x_all_wet_i[indices]
-                    taxonomies_selected = [taxonomies_selected[i] for i in indices]
-                
-                if apply_randomFx_to_dry:
-                    for i in range(x_all_i.shape[0]):
-                        _, x_augmented= self.augment_chain(x_all_i[i].cpu().numpy().T, x_all_i[i].cpu().numpy().T)
-                        x_augmented=torch.from_numpy(x_augmented.T).float().to(x_all_i.device)
-                        #stereo to mono
-                        x_augmented = x_augmented.mean(dim=0, keepdim=True)
-                        x_all_i[i] = x_augmented
+                    indices = torch.randperm(x_dry_all.shape[0])
+                    x_dry_all = x_dry_all[indices]
+                    if "wet" in self.mode:
+                        x_wet_all=x_wet_all[indices]
 
-                if self.only_dry:
-                    self.test_samples.append(( x_all_i, None,   taxonomies_selected, path)) 
-                else:
-                    self.test_samples.append(( x_all_i,  x_all_wet_i, taxonomies_selected, path)) 
-                counter+=1
+                if "mixture" in self.mode:
+                    #load the wet mixture
+                    mix_path= os.path.join(segment_subdir,"mix", "mix.wav")
+                    assert os.path.exists(mix_path), "No mixture file found in {}".format(mix_path)
 
-            if skip_iteration:
-                num_skips+=1
-                continue
+                    x_mix, fs=load_audio(mix_path, stereo=True)
+                    assert fs==self.fs, "wrong sampling rate: {}".format(fs)
+                    assert x_mix.shape[-1]== self.segment_length, "x_mix must be of length segment_length, got {}".format(x_mix.shape[-1])
 
-        random.shuffle(self.test_samples)
+
+                if self.mode=="dry-wet":
+                    self.test_samples.append(( x_dry_all, x_wet_all, None ,song_id, segment_id))
+                elif self.mode=="dry-only":
+                    self.test_samples.append(( x_dry_all, None, None, song_id, segment_id))
+                elif self.mode=="dry-mixture":
+                    self.test_samples.append(( x_dry_all, None, x_mix, song_id, segment_id))
+                elif self.mode=="dry-wet-mixture":
+                    self.test_samples.append(( x_dry_all, x_wet_all, x_mix, song_id, segment_id))
+
+
+            counter+=1
+
+            if self.num_tracks != -1 and counter >= self.num_tracks:
+                break
+
+        if self.random_order_examples:
+            random.shuffle(self.test_samples)
 
         if num_examples != -1:
             self.test_samples = self.test_samples[:num_examples]
-
-        print("test_samples", len(self.test_samples), "num_examples", num_examples, "num_skips", num_skips)
 
     def __getitem__(self, idx):
         return self.test_samples[idx]

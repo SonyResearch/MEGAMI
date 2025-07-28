@@ -16,6 +16,7 @@ exp:
 
   exp_name: "mapper_blackbox_TCN" #name of the experiment
 
+
   #related to optimization
   optimizer:
     _target_: "torch.optim.AdamW"
@@ -25,12 +26,13 @@ exp:
     weight_decay: 0.01 #weight decay for the optimizer
 
   FXenc_args:
-    type: "fx_encoder2048+AFv3" #used for encoding the style effects
+    type: "fx_encoder2048+AFv5" #used for encoding the style effects
 
   loss:
     type: "MSS_mslr+fxenc"
 
   rms_normalize_y: True #if True, the target y will be normalized to a fixed RMS value
+  use_gated_RMSnorm: False
 
   CLAP_args:
     ckpt_path: "/data2/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
@@ -136,7 +138,7 @@ network:
     adaptor_checkpoint: "/data2/eloi/experiments/CLAP_regressor_sim_multitrack/MLP_CLAP_regressor-5000.pt"
     adaptor_type: "MLP_CLAP_regressor"
     add_noise: False #if True, the features will be augmented with  noise
-    noise_sigma: 0.022 #sigma of the  noise to
+    noise_sigma: 0.011 #sigma of the  noise to
 
 
 hydra:
