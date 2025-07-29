@@ -628,7 +628,7 @@ class Tester():
                 x= apply_RMS_normalization(x, use_gate=self.args.exp.use_gated_RMSnorm)
  
                 if self.args.exp.apply_fxnorm:
-                    x=self.fx_normalizer(x)
+                    x=self.fx_normalizer(x, use_gate=self.args.exp.use_gated_RMSnorm)
 
                 #rms normalization of y to simplify things.. hardcoded... please change this later
                 #y= self.apply_RMS_normalization(y)  # apply RMS normalization to y

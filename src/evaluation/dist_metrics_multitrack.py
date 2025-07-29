@@ -226,6 +226,15 @@ class DistMetric:
                 return z
 
             self.feat_extractor = feat_extracfor_fn
+        elif self.type == "fxenc2048AFv6-AF":
+            from utils.AF_features_embedding_v6 import AF_fourier_embedding
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def feat_extracfor_fn(x):
+                z, _ = AFembedding.encode(x)
+                return z
+
+            self.feat_extractor = feat_extracfor_fn
         elif self.type == "fxenc2048AFv5-AF":
             from utils.AF_features_embedding_v5 import AF_fourier_embedding
             AFembedding= AF_fourier_embedding(device=self.device)
@@ -252,7 +261,7 @@ class DistMetric:
 
             self.feat_extractor = load_fx_encoder_plusplus_2048(self.model_args, self.device)
 
-        elif self.type == "fxenc2048AFv3-fxenc++" or self.type == "fxenc2048AFv4-fxenc++" or self.type == "fxenc2048AFv5-fxenc++":
+        elif self.type == "fxenc2048AFv3-fxenc++" or self.type == "fxenc2048AFv4-fxenc++" or self.type == "fxenc2048AFv5-fxenc++" or self.type == "fxenc2048AFv6-fxenc++":
             self.model_args= kwargs.get("fx_encoder_plusplus_args", None)
             assert self.model_args is not None, "model_args must be provided for fxencAFv2-fxenc++ type"
 
@@ -791,6 +800,19 @@ class KADFeatures(DistMetric):
                     elif self.type == "fxenc2048AFv2-AF":
                         p_hat= embed_AF
                         #print("p_hat",p_hat.shape, p_hat.std(), "l2 norm:", p_hat.norm(p=2, dim=-1).mean())
+                elif "fxenc2048AFv6" in self.type:
+
+                    embed=embed*math.sqrt(embed.shape[-1])  # Scale the embedding
+
+                    embed_fxenc=embed[...,:2048]/ math.sqrt(2048)  # Scale the first 128 dimensions
+                    embed_AF=embed[...,2048:]/ math.sqrt(64)  # Scale the last 128 dimensions
+
+
+                    if self.type == "fxenc2048AFv6-fxenc++":
+                        p_hat= embed_fxenc
+                        #print("p_hat",p_hat.shape, p_hat.std(), "l2 norm:", p_hat.norm(p=2, dim=-1).mean())
+                    elif self.type == "fxenc2048AFv6-AF":
+                        p_hat= embed_AF
                 elif "fxenc2048AFv5" in self.type:
 
                     embed=embed*math.sqrt(embed.shape[-1])  # Scale the embedding
@@ -974,6 +996,10 @@ def metric_factory(metric_name, sample_rate, *args, **kwargs):
         return KADFeatures(*args, **kwargs, type="fxenc2048AFv3-fxenc++", sample_rate=sample_rate)
     elif metric_name == "kad-fxenc2048AFv3-AF-multitrack":
         return KADFeatures(*args, **kwargs, type="fxenc2048AFv3-AF", sample_rate=sample_rate)
+    elif metric_name == "kad-fxenc2048AFv6-fxenc++-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxenc2048AFv6-fxenc++", sample_rate=sample_rate)
+    elif metric_name == "kad-fxenc2048AFv6-AF-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxenc2048AFv6-AF", sample_rate=sample_rate)
     elif metric_name == "kad-fxenc2048AFv4-fxenc++-multitrack":
         return KADFeatures(*args, **kwargs, type="fxenc2048AFv4-fxenc++", sample_rate=sample_rate)
     elif metric_name == "kad-fxenc2048AFv4-AF-multitrack":
@@ -998,6 +1024,10 @@ def metric_factory(metric_name, sample_rate, *args, **kwargs):
         return KADFeatures(*args, **kwargs, type="fxenc2048AFv5-fxenc++", sample_rate=sample_rate, classwise=True)
     elif metric_name == "kad-class-fxenc2048AFv5-AF-multitrack":
         return KADFeatures(*args, **kwargs, type="fxenc2048AFv5-AF", sample_rate=sample_rate, classwise=True)
+    elif metric_name == "kad-class-fxenc2048AFv6-fxenc++-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxenc2048AFv6-fxenc++", sample_rate=sample_rate, classwise=True)
+    elif metric_name == "kad-class-fxenc2048AFv6-AF-multitrack":
+        return KADFeatures(*args, **kwargs, type="fxenc2048AFv6-AF", sample_rate=sample_rate, classwise=True)
     elif metric_name == "kad-class-fxenc2048AFv3-fxenc++-multitrack":
         return KADFeatures(*args, **kwargs, type="fxenc2048AFv3-fxenc++", sample_rate=sample_rate, classwise=True)
     elif metric_name == "kad-class-fxenc2048AFv3-AF-multitrack":
