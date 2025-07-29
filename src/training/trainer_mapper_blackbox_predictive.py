@@ -1379,7 +1379,7 @@ class Trainer():
                 y_norm = y
 
             if self.args.exp.apply_fxnorm:
-                x=self.fx_normalizer(x)
+                x=self.fx_normalizer(x, use_gate=self.args.exp.use_gated_RMSnorm)
 
 
         y_pred=self.network(x, z)

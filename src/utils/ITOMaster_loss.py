@@ -707,7 +707,7 @@ def compute_log_rms_gated(x: torch.Tensor, sample_rate=44100, threshold=-50, **k
 
     # Set output to -60 where no frames were above threshold
     all_masked = valid_frame_count == 0  # (bs, c)
-    log_rms[all_masked] = threshold
+    log_rms[all_masked] =  threshold
 
     return log_rms
 

@@ -17,6 +17,7 @@ def T602logmag(t60, sample_rate=44100, hop_length=512):
     return 6.908 / (t60 * (sample_rate / hop_length))  # Convert T60 to delta log magnitude
 
 from utils.data_utils import taxonomy2track
+from utils.data_utils import apply_RMS_normalization
 
 
 class FxNormAug:
@@ -61,21 +62,6 @@ class FxNormAug:
         }
 
 
-    def apply_RMS_normalization(self, x, random=True):
-
-        if random:
-            RMS=self.distribution_RMS.sample(x.shape[0]).view(-1, 1, 1).to(x.device)  # Ensure RMS is broadcastable
-        else:
-            RMS= torch.tensor(self.RMS_norm, device=x.device).view(1, 1, 1).repeat(x.shape[0],1,1)  # Use fixed RMS for evaluation
-
-
-        x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
-
-        gain= RMS - x_RMS
-        gain_linear = 10 ** (gain / 20 + 1e-6)  # Convert dB gain to linear scale, adding a small value to avoid division by zero
-        x=x* gain_linear.view(-1, 1, 1)
-
-        return x
     
 
     def apply_compexp_1(self, x):
@@ -183,7 +169,7 @@ class FxNormAug:
         self.EQ_normalize = EQ_normalize_fn
 
 
-    def __call__(self, x):
+    def __call__(self, x, use_gate=False):
 
         ##print("Applying FxNormAug forward pass")
         #first stereo to mono (if needed)
@@ -196,10 +182,11 @@ class FxNormAug:
         #x = self.apply_compexp_1(x)
         #assert not torch.isnan(x).any(), "NaN detected in x after compression"
 
-        x= self.apply_RMS_normalization(x, random=False)
+        x= apply_RMS_normalization(x, -25 , use_gate=use_gate)  # Apply RMS normalization to the input
 
         x=self.EQ_normalize(x)
-        x= self.apply_RMS_normalization(x, random=False)
+
+        x= apply_RMS_normalization(x, -25, use_gate=use_gate)
         assert not torch.isnan(x).any(), "NaN detected in x after EQ normalization"
 
         return x

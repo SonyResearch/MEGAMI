@@ -426,6 +426,50 @@ class EDM_Style_Multitrack(EDM):
             self.FXenc=fxencode_fn
             self.FXenc_compiled=torch.compile(fxencode_fn)
             self.FXenc_reshape=reshape_fn       
+        elif FXenc_args.type=="fx_encoder2048+AFv6":
+            Fxencoder_plusplus_args=kwargs.get("fx_encoder_plusplus_args", None)
+
+            from utils.load_features import load_fx_encoder_plusplus_2048
+            feat_extractor = load_fx_encoder_plusplus_2048(Fxencoder_plusplus_args, self.device)
+
+            from utils.AF_features_embedding_v6 import AF_fourier_embedding
+            AFembedding= AF_fourier_embedding(device=self.device)
+
+            def fxencode_fn(x):
+                """
+                x: tensor of shape [B, C, L] where B is the batch size, C is the number of channels and L is the length of the audio
+                """
+                z=feat_extractor(x)
+                z=torch.nn.functional.normalize(z, dim=-1, p=2)
+                z=z*math.sqrt(z.shape[-1])  # rescale to keep the same scale
+
+                z_af,_=AFembedding.encode(x)
+                z_af=z_af* math.sqrt(z_af.shape[-1])  # rescale to keep the same scale
+
+
+                z_all= torch.cat([z, z_af], dim=-1)
+
+                #now L2 normalize
+
+                norm_z= z_all/ math.sqrt(z_all.shape[-1])  # normalize by dividing by sqrt(dim) to keep the same scale
+                #norm_z=torch.nn.functional.normalize(norm_z, dim=-1, p=2)  # L2 normalize
+
+                norm_z=norm_z.view(norm_z.shape[0], 64, -1)  # Reshape to [B, 64, L//64] where L//64 is the number of frames
+
+                return norm_z
+
+            def reshape_fn(embed):
+                """
+                embed: tensor of shape [B, 64, L//64] where B is the batch size
+                """
+                embed=embed.view(embed.shape[0], -1)
+
+                return embed
+
+
+            self.FXenc=fxencode_fn
+            self.FXenc_compiled=torch.compile(fxencode_fn)
+            self.FXenc_reshape=reshape_fn       
         elif FXenc_args.type=="fx_encoder2048+AFv3":
             Fxencoder_plusplus_args=kwargs.get("fx_encoder_plusplus_args", None)
 
@@ -667,7 +711,7 @@ class EDM_Style_Multitrack(EDM):
                     x = -x
 
             #rms normalize context to -25 dB
-            x= apply_RMS_normalization(x, -25, device=self.device, use_gate=self.use_gated_RMSnorm)
+            x= apply_RMS_normalization(x, -25, device=self.device)
 
             if self.apply_fxnormaug:
                 if is_test:
