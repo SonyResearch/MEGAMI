@@ -40,9 +40,11 @@ def compute_log_rms_gated_v2(x: torch.Tensor, sample_rate=44100, **kwargs):
 
     # dB conversion
     rms_db = 20 * torch.log10(rms.clamp(min=1e-8))  # (bs, c, num_frames)
+    #print("rms db shape", rms_db.shape)
 
     #take the maximum RMS across all frames
-    rms_max = rms.max(dim=2)[0]  # (bs, c)
+    rms_max = rms_db.max(dim=2)[0]  # (bs, c)
+    #print("rms max", rms_max, "x shape", x.shape)
     #print(f"RMS max shape: {rms_max.shape}")
 
     return rms_max

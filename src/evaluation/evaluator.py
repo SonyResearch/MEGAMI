@@ -107,6 +107,10 @@ class Evaluator:
             model_dir="/data2/eloi/checkpoints/S9"
             ckpt="1C_tencymastering_vocals-160000.pt"
             #ckpt="1C_tencymastering_vocals-290000.pt"
+        if self.S1_code == "S9v6":
+            config_name="conf_S9v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
+            model_dir="/data2/eloi/checkpoints/S9v6"
+            ckpt="1C_tencymastering_vocals-190000.pt"
         else:
             raise ValueError(f"Unknown S1_code: {self.S1_code}")
         
@@ -144,6 +148,13 @@ class Evaluator:
             model_dir="/data2/eloi/checkpoints/MF3wet"
             #ckpt="mapper_blackbox_TCN-300000.pt"
             ckpt="mapper_blackbox_TCN-180000.pt"
+        if self.S2_code == "MF3wetv6":
+            #config_name="conf_MF3gatewet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
+            config_name="conf_MF3wetv6_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
+            #model_dir="/data2/eloi/checkpoints/MF3gatewet"
+            model_dir="/data2/eloi/checkpoints/MF3wetv6"
+            #ckpt="mapper_blackbox_TCN-300000.pt"
+            ckpt="mapper_blackbox_TCN-220000.pt"
         else:
             raise ValueError(f"Unknown S2_code: {self.S2_code}")
 
@@ -439,7 +450,10 @@ class Evaluator:
 
             x_norm= x.mean(dim=1, keepdim=True)  # Normalize the input audio by its mean across the tracks
 
-            x_norm=apply_RMS_normalization(x_norm,-25.0, device=self.device)
+            if "v6" in self.S2_code:
+                x_norm=apply_RMS_normalization(x_norm,-25.0, device=self.device, use_gate=True)  # Apply RMS normalization with gating
+            else:
+                x_norm=apply_RMS_normalization(x_norm,-25.0, device=self.device)
 
             x_norm=self.fx_normalizer(x_norm)  # Apply the fx_normalizer if specified
          
