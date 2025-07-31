@@ -163,7 +163,7 @@ class Eval_Benchmark(torch.utils.data.Dataset):
         random_order_examples=False, #if True, the order of the samples is randomized
         random_order_tracks=False, #if True, the order of the tracks is randomized
         path=None,
-        RMS_threshold_dB=-40,
+        RMS_threshold_dB=-60,
         ):
 
         super().__init__()
@@ -308,13 +308,13 @@ class Eval_Benchmark(torch.utils.data.Dataset):
 
 
                 if self.mode=="dry-wet":
-                    self.test_samples.append(( x_dry_all, x_wet_all, None ,song_id, segment_id))
+                    self.test_samples.append(( x_dry_all, x_wet_all, None ,song_id, segment_id, segment_subdir))
                 elif self.mode=="dry-only":
-                    self.test_samples.append(( x_dry_all, None, None, song_id, segment_id))
+                    self.test_samples.append(( x_dry_all, None, None, song_id, segment_id, segment_subdir))
                 elif self.mode=="dry-mixture":
-                    self.test_samples.append(( x_dry_all, None, x_mix, song_id, segment_id))
+                    self.test_samples.append(( x_dry_all, None, x_mix, song_id, segment_id, segment_subdir))
                 elif self.mode=="dry-wet-mixture":
-                    self.test_samples.append(( x_dry_all, x_wet_all, x_mix, song_id, segment_id))
+                    self.test_samples.append(( x_dry_all, x_wet_all, x_mix, song_id, segment_id, segment_subdir))
 
 
             counter+=1

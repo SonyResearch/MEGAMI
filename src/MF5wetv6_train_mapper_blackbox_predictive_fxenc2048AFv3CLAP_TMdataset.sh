@@ -8,9 +8,9 @@ export HYDRA_FULL_ERROR=1
 source ~/myenv/bin/activate
 
 # main config
-conf=conf_MF3wetv6_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml
+conf=conf_MF5wetv6_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml
 
-n="MF3wetv6_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired"
+n="MF5wetv6_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired"
 
 PATH_EXPERIMENT=/data2/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
@@ -37,7 +37,6 @@ python M_train_mapper_blackbox_predictive.py --config-name=$conf  \
   exp.resume=True \
   exp.compile=False \
   exp.num_workers=8 \
-  exp.optimizer.lr=1e-5 \
   exp.batch_size=4 \
   logging=base_logging_mapper
 

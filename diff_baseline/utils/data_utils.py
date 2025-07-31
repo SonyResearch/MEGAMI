@@ -187,3 +187,28 @@ def synthesize_sinc_train(num_samples, sample_rate=44100, min_cutoff_ratio=0.1, 
         signal = signal / torch.max(torch.abs(signal))
 
     return signal.unsqueeze(0)  # Ensure the output is a 1D tensor
+
+from utils.dsp_features import compute_log_rms_gated_v2, compute_crest_factor, compute_stereo_width, compute_stereo_imbalance, compute_log_spread
+
+def apply_RMS_normalization(x, RMS_norm=-25, device=None, use_gate=False):
+        if device is None:
+            device = x.device
+
+        RMS= torch.tensor(RMS_norm, device=device).view(1, 1, 1).repeat(x.shape[0],1,1)  # Use fixed RMS for evaluation
+
+        x_RMS_ref=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
+        if use_gate:
+            x_RMS = compute_log_rms_gated_v2(x).unsqueeze(-1)
+        else:
+            x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
+        
+        #print("ref RMS", x_RMS_ref.shape, x_RMS.shape)
+
+        gain= RMS - x_RMS
+        gain_linear = 10 ** (gain / 20 + 1e-6)  # Convert dB gain to linear scale, adding a small value to avoid division by zero
+        #print("x.shape", x.shape, "gain_linear.shape", gain_linear.shape)
+        x=x* gain_linear
+
+        #print("xshape", x.shape, "gain_linear", gain_linear.shape)
+
+        return x

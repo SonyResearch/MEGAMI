@@ -357,6 +357,65 @@ class Tester():
                     if not self.in_training:
                         self.it+= 1  # Increment iteration for testing, so we can log it in wandb
 
+    def test_benchmark(self, mode, exp_description="", input_type="dry", residual=False):
+
+        for k, test_set in self.test_set_dict.items():
+            print(f"Testing on {k} set")
+            k+= "_" + input_type  # Add input type to the key
+
+            assert len(test_set) != 0, "No samples found in test set"
+    
+            dict_y = {}
+            dict_y_hat = {}
+            dict_x = {}
+
+            i=0
+
+            if not self.in_training:
+                self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+    
+            for data  in tqdm(test_set):
+
+                x,y, mix, song_id, segment_id, path =data
+
+                x=x.to(self.device).unsqueeze(0)  # x is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+                #y=y.to(self.device).unsqueeze(0)  # y is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+
+                #print("x", x.shape, "y", y.shape)
+
+                #assert y.shape[-1] == x.shape[-1], "sample_y and sample_x must have the same length"
+
+                assert x.shape[1]==4, "sample_x must have 4 tracks, but got {}".format(x.shape[1])
+                #assert y.shape[1]==4, "sample_y and sample_x must have the same number of tracks"
+
+                if x.shape[2] ==2 :
+                    x=x.mean(dim=2, keepdim=True)  # Convert stereo to mono
+
+                assert x.shape[2]==1, "sample_x must have 1 channel, but got {}".format(x.shape[2])
+
+                #assert y.shape[2]==2, "sample_y must have 2 channels, but got {}".format(y.shape[2])
+
+                B,N, C, T = x.shape
+
+                if input_type == "dry" or input_type == "fxnorm_dry":
+                    preds, init =self.sample_conditional_multitrack(mode, x, B=B, N=N, input_type=input_type)
+                #elif input_type == "fxnorm_wet":
+                #    preds, init=self.sample_conditional_multitrack(mode, y, B=B,N=N, input_type=input_type)
+
+                    
+                #y= y.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+                preds = preds.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+                x= x.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+                init = init.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+
+        
+                pred= preds[0].detach().cpu().numpy()
+
+                #save the audio to a file
+                os.makedirs(os.path.join(path, "diff_baseline"), exist_ok=True)
+                sf.write(os.path.join(path, "diff_baseline", f"pred_mixture.wav"), pred.T, samplerate=44100)
+
+
     def test_conditional_multitrack(self, mode, exp_description="", input_type="dry", residual=False):
         raise NotImplementedError("This method is not implemented yet")
 
@@ -773,7 +832,9 @@ class Tester():
         shape= [B, *shape[1:]]  # B is the batch size, we want to sample B samples
 
         with torch.no_grad():
-            cond=self.sampler.diff_params.transform_forward(cond,is_condition=True, is_test=True)
+            print("cond shape", cond.shape)
+            print("cond shape", cond.shape)
+            cond=self.sampler.diff_params.transform_forward(cond,normalize=True)
         
         preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device)
 
@@ -880,6 +941,12 @@ class Tester():
                     self.prepare_directories(m, unconditional=False)
                     self.save_experiment_args(m)
                 self.test_conditional_multitrack_4instr(m)
+            elif m=="benchmark":
+                print("testing conditional")
+                if not self.in_training:
+                    self.prepare_directories(m, unconditional=False)
+                    self.save_experiment_args(m)
+                self.test_benchmark(m)
             elif m== "baseline_dry":
                 print("testing baseline dry vocals")
                 if not self.in_training:
