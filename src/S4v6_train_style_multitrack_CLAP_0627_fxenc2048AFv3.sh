@@ -8,9 +8,9 @@ export HYDRA_FULL_ERROR=1
 source ~/myenv_clean/bin/activate
 
 # main config
-conf=conf_S9v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml
+conf=conf_S4v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP.yaml
 
-n="S9v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor"
+n="S4v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP"
 
 PATH_EXPERIMENT=/data5/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
@@ -21,7 +21,7 @@ mkdir -p $PATH_EXPERIMENT
 
 
 # Number of GPUs to use
-export CUDA_VISIBLE_DEVICES=2
+export CUDA_VISIBLE_DEVICES=0
 NUM_GPUS=1
 #MASTER_PORT=29500
 MASTER_PORT=29500
@@ -32,19 +32,17 @@ MASTER_PORT=29500
 #  exp.optimizer.lr=1e-4 \
 #  exp.batch_size=4 \
 
-python train_multitrack.py --config-name=$conf  \
+python train_paired_multitrack.py --config-name=$conf  \
   model_dir=$PATH_EXPERIMENT \
   exp.num_workers=10 \
   exp.resume=True \
-  exp.compile=True \
+  exp.compile=False \
+  exp.max_tracks=14 \
   dset.validation.num_tracks=16 \
   dset.validation_2.num_tracks=16 \
-  exp.optimizer.lr=1e-5 \
-  exp.batch_size=8 \
-  exp.max_tracks=14 \
-  exp.skip_first_val=True \
   logging=base_logging_1C \
   logging.log=True \
+
   #dset.validation.num_tracks=10 \
   #dset.validation_2.num_tracks=10 \
 
