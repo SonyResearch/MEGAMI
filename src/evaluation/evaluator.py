@@ -29,12 +29,14 @@ import pandas as pd
 ### Loading EffectsDiT ###
 
 class Evaluator:
-    def __init__(self, method="stylediffpipeline", method_args=None, dataset_code=None, extra_id=None, path_results="/data5/eloi/results", num_tracks_to_load=1):
+    def __init__(self, method="stylediffpipeline", sampling_strategies=["random","centroid_close","centroid_far"] , method_args=None, dataset_code=None, extra_id=None, path_results="/data5/eloi/results", num_tracks_to_load=1):
 
         self.method=method
         self.method_args = method_args
 
         self.results_df = pd.DataFrame(columns=["track", "method","metric", "value" ])
+
+        self.sampling_strategies=sampling_strategies
 
         if method=="stylediffpipeline":
             self.S1_code = method_args.S1_code
@@ -42,9 +44,9 @@ class Evaluator:
             self.dataset_code = dataset_code
         
             if extra_id is not None:
-                self.experiment_name = f"{self.method}_{self.S1_code}_{self.S2_code}_{self.dataset_code}"
-            else:
                 self.experiment_name = f"{self.method}_{self.S1_code}_{self.S2_code}_{self.dataset_code}_{extra_id}"
+            else:
+                self.experiment_name = f"{self.method}_{self.S1_code}_{self.S2_code}_{self.dataset_code}"
         
             self.path_results = path_results
             self.path_results = f"{self.path_results}/{self.experiment_name}"
@@ -110,7 +112,7 @@ class Evaluator:
         if self.S1_code == "S9v6":
             config_name="conf_S9v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
             model_dir="/data2/eloi/checkpoints/S9v6"
-            ckpt="1C_tencymastering_vocals-190000.pt"
+            ckpt="1C_tencymastering_vocals-200000.pt"
         else:
             raise ValueError(f"Unknown S1_code: {self.S1_code}")
         
@@ -154,7 +156,7 @@ class Evaluator:
             #model_dir="/data2/eloi/checkpoints/MF3gatewet"
             model_dir="/data2/eloi/checkpoints/MF3wetv6"
             #ckpt="mapper_blackbox_TCN-300000.pt"
-            ckpt="mapper_blackbox_TCN-220000.pt"
+            ckpt="mapper_blackbox_TCN-270000.pt"
         else:
             raise ValueError(f"Unknown S2_code: {self.S2_code}")
 
@@ -250,12 +252,12 @@ class Evaluator:
             )
         elif self.dataset_code == "MDX_TM_benchmark":
             self.dataset= Eval_Benchmark(
-               mode= "dry-wet-mixture",
+               mode= "dry-mixture",
                segment_length= 525312,
                fs= 44100,
-               num_tracks=10,
+               num_tracks=-1,
                num_examples=-1,
-               num_segments_per_track=1,
+               num_segments_per_track=-1,
                path="/data2/eloi/test_set/MDX_TM_benchmark",
             )
         else:
@@ -422,7 +424,7 @@ class Evaluator:
         self.generate_Fx=lambda x, num_samples : generate_Fx(x, input_type="wet", num_samples=num_samples, T=self.method_args.T, cfg_scale=self.method_args.cfg_scale, Schurn=self.method_args.Schurn)
 
 
-        from utils.feature_extractors.dsp_features import compute_log_rms_gated, compute_log_rms
+        from utils.feature_extractors.dsp_features import compute_log_rms_gated_v2, compute_log_rms
 
         def apply_rms(y_hat, z_pred):
             """
@@ -432,7 +434,11 @@ class Evaluator:
             pred_rms= 10 ** (pred_logrms / 20)  # convert log RMS to linear scale
 
             #log_rms_y_hat= compute_log_rms_gated(y_hat)  # compute the log RMS of the generated audio
-            log_rms_y_hat= compute_log_rms(y_hat)  # compute the log RMS of the generated audio
+            if "v6" in self.S1_code:
+                log_rms_y_hat= compute_log_rms_gated_v2(y_hat, sample_rate=44100, threshold=-60)
+            else:
+                log_rms_y_hat= compute_log_rms(y_hat)  # compute the log RMS of the generated audio
+
             rms_y_hat= 10 ** (log_rms_y_hat / 20)  # convert log RMS to linear scale
             
             gain= pred_rms / (rms_y_hat + 1e-6)  # Compute the gain to apply to the generated audio
@@ -452,15 +458,16 @@ class Evaluator:
 
             if "v6" in self.S2_code:
                 x_norm=apply_RMS_normalization(x_norm,-25.0, device=self.device, use_gate=True)  # Apply RMS normalization with gating
+                x_norm=self.fx_normalizer(x_norm, use_gate=True)  # Apply the fx_normalizer if specified
+                #x_norm=self.fx_normalizer(x_norm)  # Apply the fx_normalizer if specified
             else:
                 x_norm=apply_RMS_normalization(x_norm,-25.0, device=self.device)
-
-            x_norm=self.fx_normalizer(x_norm)  # Apply the fx_normalizer if specified
+                x_norm=self.fx_normalizer(x_norm)  # Apply the fx_normalizer if specified
          
             with torch.no_grad():
                 y_hat=self.fx_model(x_norm, z_pred)
 
-            y_final=apply_rms(y_hat, z_pred)  # Apply RMS normalization to the generated audio
+            y_final=apply_rms(y_hat, z_pred)
 
             return y_final
         
@@ -480,56 +487,160 @@ class Evaluator:
 
                 datav=self.dataset[i]
 
-                x_dry, y_wet , mixture, track_id, segment_id= datav 
+                x_dry, y_wet , mixture, track_id, segment_id, path_segment= datav 
+
+                print(f"Processing track {i} with path {path_segment}")
 
                 x_dry=x_dry.to(self.device)
-                y_wet=y_wet.to(self.device)
                 mixture=mixture.to(self.device)
 
-                print("x_dry shape", x_dry.shape, "mixture shape", mixture.shape, "track_id", track_id, "segment_id", segment_id)
+                try:
+                    y_wet=y_wet.to(self.device)
+                    z_ref=self.FxEnc(y_wet)  # z_y is a tensor of shape [B, N, D] where D is the dimension of the features (2048 + 2048 = 4096)
+                    y_final=self.apply_effects(x_dry, z_ref)  # Apply the effects to the input audio
+                    y_hat_mixture=y_final.sum(dim=0, keepdim=False)
 
-                z_ref=self.FxEnc(y_wet)  # z_y is a tensor of shape [B, N, D] where D is the dimension of the features (2048 + 2048 = 4096)
-            
+                    #sf.write(f"{self.path_results}/oracle_{i}.wav", y_hat_mixture.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')  # Save the generated audio
+                    os.makedirs(f"{path_segment}/oracle_proposed", exist_ok=True)
+                    #peak normalization of y_hat_mixture
+                    peak = torch.max(torch.abs(y_hat_mixture))
+                    y_hat_mixture /= peak  # Normalize the audio to [-1, 1]
+                    sf.write(f"{path_segment}/oracle_proposed/mix.wav", y_hat_mixture.cpu().numpy().T, 44100, subtype='PCM_16')  # Save the generated audio
 
-                y_final=self.apply_effects(x_dry, z_ref)  # Apply the effects to the input audio
-            
-                y_hat_mixture=y_final.sum(dim=0, keepdim=False)
-
-                sf.write(f"{self.path_results}/oracle_{i}.wav", y_hat_mixture.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')  # Save the generated audio
+                except Exception as e:
+                    print(f"Error processing track {i} with path {path_segment}: {e}")
+                    pass
 
                 if "equal_loudness" in self.anchor_fns:
                     y_equal_loudness=self.anchor_fns["equal_loudness"](x_dry)  # Apply the equal loudness anchor
-                    sf.write(f"{self.path_results}/anchor_equal_loudness_{i}.wav", y_equal_loudness.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
+
+                    #peak normalization of y_equal_loudness
+                    peak = torch.max(torch.abs(y_equal_loudness))
+                    y_equal_loudness /= peak  # Normalize the audio to [-1, 1]
+
+                    os.makedirs(f"{path_segment}/anchor_equal_loudness", exist_ok=True)
+                    sf.write(f"{path_segment}/anchor_equal_loudness/mix.wav", y_equal_loudness.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
             
-                preds=self.generate_Fx(x_dry, 5) 
+                preds=self.generate_Fx(x_dry, 100) 
                 z_pred=self.embedding_post_processing(preds)  # post-process the generated features
+
+                for s in self.sampling_strategies:
+                    if s=="random":
+                        #take a random sample from the generated featuresjj
+                        index=torch.randint(0, z_pred.shape[0], (1,)).item()  # Randomly sample an index from the generated features
+                        z_i=z_pred[index] # Randomly sample 100 features from the generated features
+                        y_final=self.apply_effects(x_dry.clone(), z_i)  # Apply the effects to the input audio
+                        y_hat_mixture=y_final.sum(dim=0, keepdim=False)
+
+                        #peak normalization of y_hat_mixture
+                        peak = torch.max(torch.abs(y_hat_mixture))
+                        y_hat_mixture /= peak  # Normalize the audio to [-1, 1]
+
+                        os.makedirs(f"{path_segment}/{self.experiment_name}", exist_ok=True)
+                        sf.write(f"{path_segment}/{self.experiment_name}/random.wav", y_hat_mixture.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
+
+                        if "only_rms" in self.anchor_fns:
+                            y_rms_anchor=self.anchor_fns["only_rms"](x_dry.clone(), z_i)
+                            #peak normalization of y_rms_anchor
+                            peak = torch.max(torch.abs(y_rms_anchor))
+                            y_rms_anchor /= peak  # Normalize the audio to [-1, 1]
+                            #sf.write(f"{self.path_results}/anchor_only_rms_{i}_{j}.wav", y_rms_anchor.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
+                            sf.write(f"{path_segment}/{self.experiment_name}/only_rms_random.wav", y_rms_anchor.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
+                    
+                    if s=="centroid_close":
+                        #calculate the centroid of the generated features and take the closest one
+                        centroid=z_pred.mean(dim=0, keepdim=True)  # Calculate the centroid of
+                        #l2 normalize the centroid (pytorch)
+                        # L2 normalize the centroid
+                        centroid_norm = centroid / torch.norm(centroid, p=2, dim=-1, keepdim=True)
+
+                        # Calculate similarities (dot products)
+                        #print("centroid_norm shape", centroid_norm.shape, "z_pred_norm shape", z_pred_norm.shape)
+                        similarities = torch.matmul(z_pred.view(z_pred.shape[0],-1), centroid_norm.view(1,-1).T).squeeze()
+                        
+                        # Get the index of the sample closest to the centroid
+                        index = torch.argmax(similarities).item()
+                        
+                        # Use the closest sample
+                        z_i = z_pred[index]
+                        y_final = self.apply_effects(x_dry.clone(), z_i)
+                        y_hat_mixture = y_final.sum(dim=0, keepdim=False)
+
+                        #peak normalization of y_hat_mixture
+                        peak = torch.max(torch.abs(y_hat_mixture))
+                        y_hat_mixture /= peak  # Normalize the audio to [-1, 1]
+                        
+                        os.makedirs(f"{path_segment}/{self.experiment_name}", exist_ok=True)
+                        sf.write(f"{path_segment}/{self.experiment_name}/centroid_close.wav", y_hat_mixture.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
+
+                        if "only_rms" in self.anchor_fns:
+                            y_rms_anchor=self.anchor_fns["only_rms"](x_dry.clone(), z_i)
+                            #peak normalization of y_rms_anchor
+                            peak = torch.max(torch.abs(y_rms_anchor))
+                            y_rms_anchor /= peak  # Normalize the audio to [-1, 1]
+                            #sf.write(f"{self.path_results}/anchor_only_rms_{i}_{j}.wav", y_rms_anchor.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
+                            sf.write(f"{path_segment}/{self.experiment_name}/only_rms_centroid_close.wav", y_rms_anchor.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
+                    
+                    if s=="centroid_far":
+                        # Calculate the centroid of the generated features
+                        centroid = z_pred.mean(dim=0, keepdim=True)
+                        
+                        # L2 normalize the centroid
+                        centroid_norm = centroid / torch.norm(centroid, p=2, dim=-1, keepdim=True)
+                        
+                        # Calculate cosine similarity between each sample and the centroid
+                        similarities = torch.matmul(z_pred.view(z_pred.shape[0],-1), centroid_norm.view(1,-1).T).squeeze()
+                        
+                        # Get the index of the sample furthest from the centroid
+                        index = torch.argmin(similarities).item()
+                        
+                        # Use the furthest sample
+                        z_i = z_pred[index]
+                        y_final = self.apply_effects(x_dry.clone(), z_i)
+                        y_hat_mixture = y_final.sum(dim=0, keepdim=False)
+
+                        #peak normalization of y_hat_mixture
+                        peak = torch.max(torch.abs(y_hat_mixture))
+                        y_hat_mixture /= peak  # Normalize the audio to [-1, 1]
+                        
+                        os.makedirs(f"{path_segment}/{self.experiment_name}", exist_ok=True)
+                        sf.write(f"{path_segment}/{self.experiment_name}/centroid_far.wav", y_hat_mixture.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
+
+                        if "only_rms" in self.anchor_fns:
+                            y_rms_anchor=self.anchor_fns["only_rms"](x_dry.clone(), z_i)
+                            #peak normalization of y_rms_anchor
+                            peak = torch.max(torch.abs(y_rms_anchor))
+                            y_rms_anchor /= peak  # Normalize the audio to [-1, 1]
+                            #sf.write(f"{self.path_results}/anchor_only_rms_{i}_{j}.wav", y_rms_anchor.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
+                            sf.write(f"{path_segment}/{self.experiment_name}/only_rms_centroid_far.wav", y_rms_anchor.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
+                        
             
-                for j in range(z_pred.shape[0]):
-                    y_final=self.apply_effects(x_dry.clone(), z_pred[j])  # Apply the effects to the input audio
+                #for j in range(z_pred.shape[0]):
+                #    y_final=self.apply_effects(x_dry.clone(), z_pred[j])  # Apply the effects to the input audio
                 
-                    y_hat_mixture=y_final.sum(dim=0, keepdim=False)
+                #    y_hat_mixture=y_final.sum(dim=0, keepdim=False)
                 
-                    sf.write(f"{self.path_results}/pred_blackbox_{i}_{j}.wav", y_hat_mixture.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
+                #    sf.write(f"{self.path_results}/pred_blackbox_{i}_{j}.wav", y_hat_mixture.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
 
-                    if "only_rms" in self.anchor_fns:
-                        y_rms_anchor=self.anchor_fns["only_rms"](x_dry.clone(), z_pred[j])
-                        sf.write(f"{self.path_results}/anchor_only_rms_{i}_{j}.wav", y_rms_anchor.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
+                #    if "only_rms" in self.anchor_fns:
+                #        y_rms_anchor=self.anchor_fns["only_rms"](x_dry.clone(), z_pred[j])
+                #        sf.write(f"{self.path_results}/anchor_only_rms_{i}_{j}.wav", y_rms_anchor.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
 
-                preds=self.generate_Fx(x_dry,  100 ) 
-                preds=self.embedding_post_processing(preds)  # post-process the generated features
+                #preds=self.generate_Fx(x_dry,  500 ) 
+                #preds=self.embedding_post_processing(preds)  # post-process the generated features
             
                 # Step 1: Optional PCA preprocessing (recommended for high dimensions)
                 # If you want to add PCA preprocessing:
-                from sklearn.decomposition import PCA
-                pca = PCA(n_components=2)
-                transform_data = pca.fit_transform(preds.view(preds.shape[0], -1).cpu().numpy())
+                #from sklearn.decomposition import PCA
+                #pca = PCA(n_components=2)
+                #transform_data = pca.fit_transform(preds.view(preds.shape[0], -1).cpu().numpy())
 
-                transform_reference= pca.transform(z_ref.view(1, -1).cpu().numpy())
+                #transform_reference= pca.transform(z_ref.view(1, -1).cpu().numpy())
             
-                data_dict = {
-                   "predicted": transform_data,
-                   "reference": transform_reference,  # Use the first element as reference
-                    } 
+                #data_dict = {
+                #   "predicted": transform_data,
+                #   "reference": transform_reference,  # Use the first element as reference
+                #    } 
             
-                fig = make_PCA_figure(data_dict, title="PCA")
-                fig.savefig(f"{self.path_results}/pca_blackbox_{i}.png")
+                #fig = make_PCA_figure(data_dict, title="PCA")
+                #fig.savefig(f"{self.path_results}/pca_blackbox_{i}.png")
