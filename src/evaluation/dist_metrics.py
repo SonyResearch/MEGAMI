@@ -8,7 +8,7 @@ from importlib import import_module
 import torch
 
 
-from evaluation.feature_extractors import load_AFxRep, load_fx_encoder, load_fx_encoder_plusplus, load_MERT, load_CLAP
+from evaluation.feature_extractors import load_AFxRep, load_fx_encoder, load_fx_encoder_plusplus, load_MERT, load_CLAP, load_CLAP_standard
 
 from utils.log import make_PCA_figure
 
@@ -150,6 +150,8 @@ class DistMetric:
             self.model_args= kwargs.get("fx_encoder_plusplus_args", None)
 
             assert self.model_args is not None, "model_args must be provided for fx_encoder_plusplus type"
+            
+            print(self.model_args)
 
             self.distance_type=self.model_args.distance_type
 
@@ -205,7 +207,7 @@ class DistMetric:
             self.model_args= kwargs.get("CLAP_args", None)
             assert self.model_args is not None, "model_args must be provided for CLAP type"
 
-            self.feat_extractor = load_CLAP(self.model_args, self.device, type=None)
+            self.feat_extractor = load_CLAP_standard(self.model_args, self.device)
 
 
         else:

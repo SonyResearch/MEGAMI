@@ -106,12 +106,12 @@ class Evaluator:
             #config_name="conf_S9gate_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
             config_name="conf_S9_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
             #model_dir="/data2/eloi/checkpoints/S9gate"
-            model_dir="/data2/eloi/checkpoints/S9"
+            model_dir="/data5/eloi/checkpoints/S9"
             ckpt="1C_tencymastering_vocals-160000.pt"
             #ckpt="1C_tencymastering_vocals-290000.pt"
         if self.S1_code == "S9v6":
             config_name="conf_S9v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
-            model_dir="/data2/eloi/checkpoints/S9v6"
+            model_dir="/data5/eloi/checkpoints/S9v6"
             ckpt="1C_tencymastering_vocals-200000.pt"
         else:
             raise ValueError(f"Unknown S1_code: {self.S1_code}")
@@ -147,14 +147,14 @@ class Evaluator:
             #config_name="conf_MF3gatewet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
             config_name="conf_MF3wet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
             #model_dir="/data2/eloi/checkpoints/MF3gatewet"
-            model_dir="/data2/eloi/checkpoints/MF3wet"
+            model_dir="/data5/eloi/checkpoints/MF3wet"
             #ckpt="mapper_blackbox_TCN-300000.pt"
             ckpt="mapper_blackbox_TCN-180000.pt"
         if self.S2_code == "MF3wetv6":
             #config_name="conf_MF3gatewet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
             config_name="conf_MF3wetv6_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
             #model_dir="/data2/eloi/checkpoints/MF3gatewet"
-            model_dir="/data2/eloi/checkpoints/MF3wetv6"
+            model_dir="/data5/eloi/checkpoints/MF3wetv6"
             #ckpt="mapper_blackbox_TCN-300000.pt"
             ckpt="mapper_blackbox_TCN-270000.pt"
         else:
@@ -258,7 +258,7 @@ class Evaluator:
                num_tracks=-1,
                num_examples=-1,
                num_segments_per_track=-1,
-               path="/data2/eloi/test_set/MDX_TM_benchmark",
+               path="/data5/eloi/test_set/MDX_TM_benchmark",
             )
         else:
             raise ValueError(f"Unknown dataset_code: {self.dataset_code}")
@@ -510,6 +510,7 @@ class Evaluator:
                 except Exception as e:
                     print(f"Error processing track {i} with path {path_segment}: {e}")
                     pass
+                    
 
                 if "equal_loudness" in self.anchor_fns:
                     y_equal_loudness=self.anchor_fns["equal_loudness"](x_dry)  # Apply the equal loudness anchor

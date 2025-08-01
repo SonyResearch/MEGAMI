@@ -55,6 +55,66 @@ def load_fx_encoder_plusplus_2048(model_args, device, *args, **kwargs):
 
     return lambda x: effects_encoder_fn(x)
 
+def load_CLAP_standard(model_args, device, *args, **kwargs):
+
+    #original_path = sys.path.copy()
+    from utils.laion_clap.hook import CLAP_Module
+    model= CLAP_Module(enable_fusion=False, amodel= 'HTSAT-base')
+    #sys.path = original_path
+
+
+    model.load_ckpt(model_args.ckpt_path)
+    model.to(device)
+
+    normalize = model_args.normalize
+
+    if model_args.use_adaptor:
+        if model_args.adaptor_type == "MLP_CLAP_regressor":
+            from networks.MLP_CLAP_regressor import MLP_CLAP_regressor
+            adaptor=MLP_CLAP_regressor()
+            ckpt=torch.load(model_args.adaptor_checkpoint, map_location=device, weights_only=False)
+            adaptor.load_state_dict(ckpt["network"], strict=True)
+            adaptor.to(device)
+
+        
+    def add_isotropic_noise(z, sigma=0.1):
+        """
+        z: [..., D] normalized embeddings (e.g., from CLAP or a regressor)
+        sigma: scale of noise to inject
+        Returns: z with orthogonal Gaussian noise added
+        """
+        n=torch.randn_like(z)  # isotropic noise
+        z_noisy = F.normalize(z + sigma * n, dim=-1)
+        return z_noisy
+
+    def clap_fn(x, type=None):
+        B, C, T = x.shape
+        if C > 1:
+            x= x.mean(dim=1, keepdim=True)  # Convert to mono if stereo
+
+        with torch.no_grad():
+            x=torchaudio.functional.resample(x, orig_freq=44100, new_freq=48000)
+            x= x.squeeze(1)  # Remove channel dimension for CLAP
+            emb=model.get_audio_embedding_from_data(x,use_tensor=True)
+
+            if type is not None:
+                if type == "wet":
+                    #print("wet mode")
+                    if model_args.use_adaptor:
+                        emb= adaptor(emb)  # Apply the adaptor if specified
+    
+            if model_args.add_noise:
+                emb= torch.nn.functional.normalize(emb, p=2, dim=-1)  # Normalize before adding noise
+                emb = add_isotropic_noise(emb, sigma=model_args.noise_sigma)
+
+            # Normalize the embeddings
+            if normalize:
+                emb = torch.nn.functional.normalize(emb, p=2, dim=-1)
+
+            return emb
+
+    return lambda x: clap_fn(x)
+
 def load_CLAP(model_args, device, *args, **kwargs):
 
     #original_path = sys.path.copy()

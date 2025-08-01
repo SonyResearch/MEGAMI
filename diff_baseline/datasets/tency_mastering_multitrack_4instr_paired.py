@@ -637,6 +637,7 @@ class TencyMastering(torch.utils.data.IterableDataset):
 
 
                 for i, (dry_file, wet_file) in enumerate(zip(dry_files, wet_files)):
+                    #print(i, dry_file, wet_file)
     
                     out=load_audio(str(dry_file), start, end, stereo=self.stereo)
                     if out is None:

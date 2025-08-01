@@ -11,7 +11,7 @@ train:
 
   tracks: "all"
 
-  path_csv: "/data5/eloi/TencyMastering/PANNs_country_pop/train_split.csv"
+  path_csv: "/data5/share/TencyMastering/PANNs_country_pop/train_split.csv"
 
   normalize_params:
     #normalize_mode: "loudness_dry"
@@ -42,7 +42,7 @@ validation:
 
   tracks: "all"
 
-  path_csv: "/data5/eloi/TencyMastering/PANNs_country_pop/val_split.csv"
+  path_csv: "/data5/share/TencyMastering/PANNs_country_pop/val_split.csv"
 
   normalize_params:
     #normalize_mode: "loudness_dry"
@@ -75,7 +75,7 @@ validation_2:
   tracks: "all"
 
 
-  path_csv: "/data5/eloi/TencyMastering/PANNs_country_pop/train_split.csv"
+  path_csv: "/data5/share/TencyMastering/PANNs_country_pop/train_split.csv"
 
   normalize_params:
     #normalize_mode: "loudness_dry"
@@ -107,7 +107,7 @@ test:
 
   tracks: "all"
 
-  path_csv: "/data5/eloi/TencyMastering/PANNs_country_pop/test_split.csv"
+  path_csv: "/data5/share/TencyMastering/PANNs_country_pop/test_split.csv"
 
   normalize_params:
     #normalize_mode: "loudness_dry"

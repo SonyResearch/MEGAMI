@@ -829,6 +829,8 @@ class Tester():
         cond_shape= cond.shape
 
         shape=self.sampler.diff_params.default_shape
+        shape=cond.shape
+
         shape= [B, *shape[1:]]  # B is the batch size, we want to sample B samples
 
         with torch.no_grad():
@@ -836,7 +838,7 @@ class Tester():
             print("cond shape", cond.shape)
             cond=self.sampler.diff_params.transform_forward(cond,normalize=True)
         
-        preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device)
+        preds, noise_init = self.sampler.predict_conditional(cond.shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device)
 
         if preds.shape[-1] != cond_shape[-1]:
             # If the shape of the predictions is not the same as the shape of the condition, we need to pad or truncate

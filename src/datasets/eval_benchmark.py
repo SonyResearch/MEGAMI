@@ -194,9 +194,9 @@ class Eval_Benchmark(torch.utils.data.Dataset):
 
         self.song_dirs= sorted(glob.glob(os.path.join(self.path, "*")))
 
-        if self.mode=="dry-wet" or self.mode=="dry-wet-mixture":
-            #only TM tracks are available
-            self.song_dirs = [d for d in self.song_dirs if "TM" in os.path.basename(d)]
+        #if self.mode=="dry-wet" or self.mode=="dry-wet-mixture":
+        #    #only TM tracks are available
+        #    self.song_dirs = [d for d in self.song_dirs if "TM" in os.path.basename(d)]
 
 
         for song_dir in tqdm(self.song_dirs):
@@ -215,10 +215,14 @@ class Eval_Benchmark(torch.utils.data.Dataset):
 
                 segment_id= os.path.basename(segment_subdir)
 
+
                 if self.format == "4instr":
                     dry_path= os.path.join(segment_subdir, "dry_4instr")
                 elif self.format == "all_tracks":
-                    dry_path= os.path.join(segment_subdir, "dry_multi")
+                    if "MDX" in song_id and (self.mode=="dry-wet-mixture" or self.mode=="dry-mixture"):
+                        dry_path= os.path.join(segment_subdir, "dry_4instr")
+                    else:
+                        dry_path= os.path.join(segment_subdir, "dry_multi")
 
                 dry_files= glob.glob(os.path.join(dry_path, "*.wav"))
 
@@ -233,7 +237,10 @@ class Eval_Benchmark(torch.utils.data.Dataset):
                     if self.format == "4instr":
                         wet_path= os.path.join(segment_subdir, "wet_4instr")
                     elif self.format == "all_tracks":
-                        wet_path= os.path.join(segment_subdir, "multi")
+                        if "MDX" in song_id and (self.mode=="dry-wet-mixture" or self.mode=="dry-mixture"):
+                            wet_path= os.path.join(segment_subdir, "wet_4instr")
+                        else:
+                            wet_path= os.path.join(segment_subdir, "multi")
 
                     files_wet= glob.glob(os.path.join(wet_path, "*.wav"))
 
