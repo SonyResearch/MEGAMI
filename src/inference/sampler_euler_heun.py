@@ -16,13 +16,17 @@ class SamplerEulerHeun(Sampler):
 
         # order of the sampler
         self.order = self.args.tester.sampling_params.order
+        self.cond=None
+        self.cfg_scale = 1.0
 
     def predict_conditional(
             self,
             shape,  # observations (lowpssed signal) Tensor with shape ??
             cond=None,
+            embedding=None,  # fixed condition, e.g. the input signal
             cfg_scale=1.0,
             device=None,  # device
+            apply_inverse_transform=True  # whether to apply inverse transform
     ):
         self.cond = cond
         assert self.cond is not None, "Conditional input is None"
@@ -30,7 +34,11 @@ class SamplerEulerHeun(Sampler):
         print("cfg_scale", cfg_scale)
         self.cfg_scale = cfg_scale
 
-        return self.predict(shape, device)
+        if embedding is not None:
+            self.diff_params.save_embedding(self.model, self.cond, embedding)
+
+
+        return self.predict(shape, device, apply_inverse_transform=apply_inverse_transform)
 
     def predict_unconditional(
             self,
@@ -126,7 +134,8 @@ class SamplerEulerHeun(Sampler):
             shape,  # observations (lowpssed signal) Tensor with shape ??
             device,  # lambda function
             dtype=torch.float32,  # data type
-            blind=False
+            blind=False,
+            apply_inverse_transform=True  # whether to apply inverse transform
     ):
 
         # get the noise schedule
@@ -151,9 +160,13 @@ class SamplerEulerHeun(Sampler):
             x, x_den = self.step(x, t[i], t[i + 1], gamma[i], blind)
 
 
-        x_den_wave=self.diff_params.transform_inverse(x_den.detach())
+        if apply_inverse_transform:
+            with torch.no_grad():
+                x_den_wave=self.diff_params.transform_inverse(x_den.detach())
 
-        return x_den_wave.detach(), None
+            return x_den_wave.detach(), None
+        else:
+            return x_den.detach(), None
 
     def create_schedule(self, sigma_min=None, sigma_max=None, rho=None, T=None):
         """

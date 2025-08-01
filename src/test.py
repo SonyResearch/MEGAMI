@@ -3,6 +3,8 @@ import hydra
 #import click
 import torch
 #from utils.torch_utils import distributed as dist
+import logging
+logging.getLogger("numba.cuda.cudadrv.driver").setLevel(logging.WARNING)
 
 def _main(args):
 
@@ -17,6 +19,32 @@ def _main(args):
     if not os.path.exists(args.model_dir):
             raise Exception(f"Model directory {args.model_dir} does not exist")
 
+
+    ##############
+    ## test set ##
+    ##############
+
+    # also dset log something
+    #test_set=hydra.utils.instantiate(args.dset.test)
+    #except:
+    #    test_set=None
+
+    val_set_dict = {}
+    val_set = hydra.utils.instantiate(args.dset.validation)
+    val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=args.tester.batch_size, num_workers=args.exp.num_workers,
+                                                  pin_memory=True)
+    val_set_dict[args.dset.validation.mode] = val_loader
+
+    try:
+        val_set_2 = hydra.utils.instantiate(args.dset.validation_2)
+        val_loader_2 = torch.utils.data.DataLoader(dataset=val_set_2, batch_size=args.tester.batch_size, num_workers=args.exp.num_workers,
+                                                  pin_memory=True)
+        val_set_dict[args.dset.validation_2.mode] = val_loader_2
+    except:
+        print("Second validation set not found, using only first one")
+        pass
+    
+
     #################
     ## diff params ##
     #################
@@ -30,16 +58,6 @@ def _main(args):
     # it prints some logs.
     network=hydra.utils.instantiate(args.network)
     network=network.to(device)
-
-    ##############
-    ## test set ##
-    ##############
-
-    # also dset log something
-    #try:
-    test_set=hydra.utils.instantiate(args.dset.test)
-    #except:
-    #    test_set=None
 
 
     #############
@@ -60,7 +78,7 @@ def _main(args):
 
     #tester=hydra.utils.instantiate(args.tester, args=args, network=network, diff_params=diff_params,  inference_train_set=inference_train_set, inference_test_set=inference_test_set, device=device)
     from testing.tester import Tester
-    tester=Tester(args=args, network=network, diff_params=diff_params,test_set=test_set, device=device) #this will be used for making demos during training
+    tester=Tester(args=args, network=network, diff_params=diff_params,test_set_dict=val_set_dict, device=device) #this will be used for making demos during training
 
     # Print optirain.
     print()

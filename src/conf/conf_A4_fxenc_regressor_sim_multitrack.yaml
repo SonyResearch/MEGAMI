@@ -1,0 +1,96 @@
+
+defaults:
+  - dset: tencymastering_multitrack_simulated_countrypop_server5_randomorder_fixed_size
+  - network: MLP_fxenc_regressor
+  - logging: base_logging
+
+model_dir: "/data4/eloi/experiments/MLP_fxenc_regressor"
+
+
+
+
+exp:
+  exp_name: "MLP_fxenc_regressor" #name of the experiment
+
+  #related to optimization
+  optimizer:
+    _target_: "torch.optim.AdamW"
+    lr: 1e-4 #            help='Learning rate',
+    betas: [0.9, 0.999]
+    eps: 1e-8 #for numerical stability, we may need to modify it if usinf fp16
+    weight_decay: 0.01 #weight decay for the optimizer
+
+  
+  CLAP_args:
+    ckpt_path: "/data5/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
+    distance_type: "cosine"
+    normalize: True #if True, the features will be normalized
+    use_adaptor: False #if True, the features will be adapted to the CLAP space
+    adaptor_checkpoint: Null
+    adaptor_type: Null
+    add_noise: False #if True, the features will be augmented with orthogonal noise
+    noise_sigma: 0.1 #sigma of the orthogonal noise to
+
+  
+  fx_encoder_plusplus_args:
+    distance_type: "cosine"
+    ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/utils/feature_extractors/ckpt/fxenc_plusplus_default.pt"
+
+
+  lr_rampup_it: 1000 
+
+  #for lr scheduler (not noise schedule!!) TODO (I think)
+  scheduler_step_size: 60000
+  scheduler_gamma: 0.8
+
+  batch_size: 16
+
+  val_batch_size: 16
+
+  # Performance-related.
+  num_workers: 8
+
+  # I/O-related. moved to logging
+  seed: 1 # random seed
+
+  resume: False
+  resume_checkpoint: None
+
+  #audio data related
+  sample_rate: 44100
+  stereo: True
+  audio_len: 525312
+
+  ema_rate: 0.999  
+  ema_rampup: 1000  #linear rampup to ema_rate   
+
+
+  #gradient clipping
+  use_grad_clip: True
+  max_grad_norm: 1
+
+  restore : False
+  checkpoint_id: None
+  align: False
+
+  augmentations:
+    list: ["polarity" ]
+    polarity:
+      prob: 0.5
+
+  compile: True
+
+  max_tracks: Null
+
+#testing (demos)
+
+hydra:
+  job:
+    config:
+      # configuration for the ${hydra.job.override_dirname} runtime variable
+      override_dirname:
+        kv_sep: '='
+        item_sep: ','
+        # Remove all paths, as the / in them would mess up things
+        exclude_keys: ['path_experiment',
+          'hydra.job_logging.handles.file.filename']

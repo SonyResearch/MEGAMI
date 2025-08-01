@@ -17,6 +17,7 @@ class EDM(SDE):
         sde_hp,
         cfg_dropout_prob, 
         default_shape,
+        **kwargs
         ):
 
         super().__init__(type, sde_hp)

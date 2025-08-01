@@ -1,0 +1,17 @@
+
+_target_: "networks.mapper_architectures.TCNModel"
+
+ninputs: 1
+noutputs: 2
+cond_dim: 1024
+nblocks: 14
+kernel_size: 15
+stride: 1
+dilation_growth: 2
+channel_growth: 1
+channel_width: 128 
+stack_size: 15
+grouped: False
+causal: False
+skip_connections: False
+num_examples: 4

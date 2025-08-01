@@ -87,7 +87,7 @@ class Trainer():
 
         self.distributed = distributed
         if distributed:
-            self.network = torch.nn.parallel.DistributedDataParallel(self.network.to(device), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=True)
+            self.network = torch.nn.parallel.DistributedDataParallel(self.network.to(device), device_ids=[self.rank], output_device=self.rank, find_unused_parameters=False)
 
         if self.args.exp.compile:
             self.network=torch.compile(self.network)
@@ -99,8 +99,16 @@ class Trainer():
                 if self.tester is not None:
                     self.tester.setup_wandb_run(self.wandb_run)
                 self.setup_logging_variables()
+
+        self.skip_val=False  # This is used to skip validation during training, useful for debugging
+
+        try:
+            if self.args.exp.skip_first_val:
+                self.skip_val = True
+        except Exception as e:
+            print(e)
+            pass
         
-        #self.network=torch.compile(self.network)
 
     def setup_wandb(self):
         """
@@ -288,6 +296,7 @@ class Trainer():
                 apply = torch.rand(x.shape[0]) > prob
                 y[apply] *= -1
                 x[apply] *= -1
+            
 
             else:
                 print("augmentation not implemented: " + a)
@@ -336,7 +345,7 @@ class Trainer():
 
 
         y, x = self.get_batch()
-        #print("y", y.shape, y.dtype, "x", x.shape, x.dtype)
+        print("y", y.shape, y.dtype, "x", x.shape, x.dtype)
 
 
         #print("sync", self.rank)
@@ -344,7 +353,11 @@ class Trainer():
             dist.barrier()
 
         #print("sample", sample.std(), sample.shape)
-        error, sigma = self.diff_params.loss_fn(self.network, sample=y, context=x, ema=self.ema)
+        #try:
+        error, sigma, x, y = self.diff_params.loss_fn(self.network, sample=y, context=x, ema=self.ema)
+        #except Exception as e:
+        #    print(e)
+        #    return
         #error, sigma = self.diff_params.loss_fn(self.network, sample=y, ema=self.ema)
 
         #if error is a list, we need to process it separately
@@ -366,7 +379,6 @@ class Trainer():
 
                 if self.args.logging.log:
                     self.process_loss_for_logging(error, sigma)
-
         else:
             print("loss is NaN, skipping step")
 
@@ -463,7 +475,11 @@ class Trainer():
                     self.save_checkpoint()
     
                 if self.it > 0 and self.it % self.args.logging.heavy_log_interval == 0 and self.args.logging.log:
-                    self.heavy_logging()
+                    if self.skip_val:
+                        print("Skipping validation")
+                        self.skip_val = False
+                    else:
+                        self.heavy_logging()
     
                 if self.it > 0 and self.it % self.args.logging.log_interval == 0 and self.args.logging.log:
                     self.easy_logging()

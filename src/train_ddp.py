@@ -6,6 +6,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data.distributed import DistributedSampler
 from omegaconf import DictConfig
+import datetime
 
 def worker_init_fn(worker_id, rank=0):
     st = np.random.get_state()[2]
@@ -36,13 +37,45 @@ def _main(rank, world_size, args):
                                                worker_init_fn=lambda x: worker_init_fn(x, rank), timeout=0, prefetch_factor=20)
     train_loader = iter(train_loader)
 
+    val_set_dict = {}
     if rank == 0:
         val_set = hydra.utils.instantiate(args.dset.validation)
-        val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=1, num_workers=args.exp.num_workers,
+        val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=args.exp.val_batch_size, num_workers=args.exp.num_workers,
                                              pin_memory=True, worker_init_fn=lambda x: worker_init_fn(x, rank=rank))
+        val_set_dict[args.dset.validation.mode] = val_loader
     else:
         val_set = None
         val_loader = None
+    
+
+    try:
+        if rank == 0:
+            val_set = hydra.utils.instantiate(args.dset.validation_2)
+            val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=args.exp.val_batch_size, num_workers=args.exp.num_workers,
+                                                 pin_memory=True, worker_init_fn=lambda x: worker_init_fn(x, rank=rank))
+            val_set_dict[args.dset.validation_2.mode] = val_loader
+    except:
+        print("Second validation set not found, using only first one")
+        pass
+    try:
+        if rank == 0:
+            val_set = hydra.utils.instantiate(args.dset.validation_3)
+            val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=args.exp.val_batch_size, num_workers=args.exp.num_workers,
+                                                 pin_memory=True, worker_init_fn=lambda x: worker_init_fn(x, rank=rank))
+            val_set_dict[args.dset.validation_3.mode] = val_loader
+    except:
+        print("Second validation set not found, using only first one")
+        pass
+
+    try:
+        if rank == 0:
+            val_set = hydra.utils.instantiate(args.dset.validation_4)
+            val_loader = torch.utils.data.DataLoader(dataset=val_set, batch_size=args.exp.val_batch_size, num_workers=args.exp.num_workers,
+                                                 pin_memory=True, worker_init_fn=lambda x: worker_init_fn(x, rank=rank))
+            val_set_dict[args.dset.validation_4.mode] = val_loader
+    except:
+        print("Second validation set not found, using only first one")
+        pass
 
     # Diffusion parameters
     diff_params = hydra.utils.instantiate(args.diff_params)
@@ -63,7 +96,7 @@ def _main(rank, world_size, args):
     from testing.tester import Tester
     import copy
     network_tester = copy.deepcopy(network).eval().requires_grad_(False)
-    tester = Tester(args, network_tester, diff_params, device=device, in_training=True, test_set=val_set)
+    tester = Tester(args, network_tester, diff_params, device=device, in_training=True, test_set_dict=val_set_dict)
 
     # Trainer
     trainer = hydra.utils.instantiate(args.exp.trainer, args, train_loader, network, diff_params, tester, device, rank, world_size)
@@ -94,6 +127,7 @@ def init_distributed_mode(rank, world_size):
         init_method='env://',
         world_size=world_size,
         rank=rank,
+        timeout=datetime.timedelta(seconds=3600),
     )
 
 @hydra.main(config_path="conf", config_name="conf", version_base=None)

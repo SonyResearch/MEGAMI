@@ -1,4 +1,5 @@
 import torch
+import hydra
 import einops
 import numpy as np
 
@@ -6,7 +7,8 @@ import utils.training_utils as utils
 from diff_params.shared import SDE
 
 import torch.distributed as dist
-
+import sys
+import torch.nn.functional as F
 
 class EDM_LDM(SDE):
     """
@@ -20,7 +22,11 @@ class EDM_LDM(SDE):
         AE_type,
         sde_hp,
         cfg_dropout_prob,
-        default_shape
+        default_shape,
+        apply_fxnormaug=False,
+        fxnormaug_train=None,
+        fxnormaug_inference=None,
+        **kwargs
         ):
 
         super().__init__(type, sde_hp)
@@ -31,6 +37,11 @@ class EDM_LDM(SDE):
         self.rho = self.sde_hp.rho
 
         self.default_shape = torch.Size(default_shape)
+
+        self.apply_fxnormaug = apply_fxnormaug
+        self.fxnormaug_train = fxnormaug_train
+        self.fxnormaug_inference = fxnormaug_inference
+
 
         try:
             self.max_t= self.sde_hp.max_sigma
@@ -47,12 +58,14 @@ class EDM_LDM(SDE):
 
         self.cfg_dropout_prob = cfg_dropout_prob
 
+        self.AE_type = AE_type
+
         if AE_type=="SAO_VAE":
             from stable_audio_tools import get_pretrained_model
             VAE, VAE_model_config = get_pretrained_model("stabilityai/stable-audio-open-1.0")
             self.AE=VAE.to(self.device)
 
-            def encode_fn(x, mono=False):
+            def encode_fn(x,*args, mono=False):
                 x = x.to(self.device)
                 if mono:
                     x=torch.stack([x, x], dim=1)
@@ -72,6 +85,169 @@ class EDM_LDM(SDE):
             self.AE_encode_compiled=torch.compile(encode_fn)
             self.AE_decode=decode_fn
 
+        elif AE_type=="oracle":
+            oracle_args= kwargs.get("oracle_args", None)
+            assert oracle_args is not None, "oracle_args must be provided for oracle"
+
+
+            def encode_fn(x, clusters):
+                
+                #shape of clusters is (B,)
+
+                emb=F.one_hot(clusters, num_classes=oracle_args.size).to(x.device)
+
+                #emb has shape (B, C)
+
+                emb=emb.view(emb.shape[0],1, 64) #shape (B, 64, N)
+
+
+                return emb.contiguous()
+            
+            self.AE_encode=encode_fn
+            self.AE_encode_compiled=torch.compile(encode_fn)
+
+            self.AE_decode=lambda x: x
+
+        elif AE_type=="MERT":
+            MERT_args= kwargs.get("MERT_args", None)
+            assert MERT_args is not None, "MERT_args must be provided for MERT AE"
+
+            from evaluation.feature_extractors import load_MERT
+
+            MERT_encoder= load_MERT(MERT_args, device=self.device)
+
+            def encode_fn(x, *args):
+                x=x.to(self.device)
+                z=MERT_encoder(x) #shape (B, C)
+
+                #print("MERT z shape", z.shape)
+
+                z=z.view(z.shape[0], 64, -1) #shape (B, 64, N)
+
+                #print("MERT z shape after reshape", z.shape)
+                z=z.permute(0, 2, 1) #shape (B, N, 64)
+
+                return z.contiguous()
+            
+            self.AE_encode=encode_fn
+            self.AE_encode_compiled=torch.compile(encode_fn)
+
+            self.AE_decode=lambda x: x
+
+        elif AE_type=="MERT_AFxRep":
+            MERT_args= kwargs.get("MERT_args", None)
+
+            assert MERT_args is not None, "MERT_args must be provided for MERT AE"
+
+            from evaluation.feature_extractors import load_MERT
+
+            MERT_encoder= load_MERT(MERT_args, device=self.device)
+
+            AFxRep_args= kwargs.get("AFxRep_args", None)
+
+            from evaluation.feature_extractors import load_AFxRep
+
+            AFxRep_encoder= load_AFxRep(AFxRep_args, device=self.device)
+
+
+            def encode_fn(x,*args):
+                x=x.to(self.device)
+                z1=MERT_encoder(x) #shape (B, C)
+
+                #print("MERT z shape", z.shape)
+
+                z1=z1.view(z1.shape[0], 64, -1) #shape (B, 64, N)
+
+                z1=z1.permute(0, 2, 1) #shape (B, N, 64)
+
+                #now load the AFxRep embeddings
+
+                z2=AFxRep_encoder(x)
+                z2=z2.view(z2.shape[0], 64, -1)
+
+                z2=z2.permute(0, 2, 1) #shape (B, N2, 64)
+
+                z=torch.cat([z1, z2], dim=-2) #shape (B, N+N2, 64)
+
+                return z.contiguous()
+            
+            self.AE_encode=encode_fn
+            self.AE_encode_compiled=torch.compile(encode_fn)
+
+            self.AE_decode=lambda x: x
+
+        elif AE_type=="CLAP_AFxRep":
+            CLAP_args= kwargs.get("CLAP_args", None)
+            assert CLAP_args is not None, "CLAP_args must be provided for CLAP AE"
+
+            # Save original path
+            original_path = sys.path.copy()
+            print("path", sys.path)
+   
+            from evaluation.feature_extractors import load_CLAP
+            CLAP_encoder= load_CLAP(CLAP_args, device=self.device)
+
+
+            sys.path = original_path
+            print("path", sys.path)
+
+            AFxRep_args= kwargs.get("AFxRep_args", None)
+
+            from evaluation.feature_extractors import load_AFxRep
+
+            AFxRep_encoder= load_AFxRep(AFxRep_args, device=self.device)
+
+            def encode_fn(x, *args):
+                x=x.to(self.device)
+                z=CLAP_encoder(x) #shape (B, C)
+
+                z=z.view(z.shape[0], 64, -1) #shape (B, 64, N)
+
+                z=z.permute(0, 2, 1) #shape (B, N, 64)
+
+                z2=AFxRep_encoder(x)
+                z2=z2.view(z2.shape[0], 64, -1)
+                z2=z2.permute(0, 2, 1)
+
+                z_all=torch.cat([z, z2], dim=-2) #shape (B, N+N2, 64)
+
+                return z_all
+            
+
+            self.AE_encode=encode_fn
+            self.AE_encode_compiled=torch.compile(encode_fn)
+
+            self.AE_decode=lambda x: x
+
+        elif AE_type=="CLAP":
+            CLAP_args= kwargs.get("CLAP_args", None)
+            assert CLAP_args is not None, "CLAP_args must be provided for CLAP AE"
+
+            # Save original path
+            original_path = sys.path.copy()
+   
+            from evaluation.feature_extractors import load_CLAP
+            CLAP_encoder= load_CLAP(CLAP_args, device=self.device)
+
+            sys.path = original_path
+
+            def encode_fn(x, *args, **kwargs):
+                x=x.to(self.device)
+
+                type= kwargs.get("type", None)
+                z=CLAP_encoder(x, type) #shape (B, C)
+
+                z=z.view(z.shape[0], 64, -1) #shape (B, 64, N)
+
+                z=z.permute(0, 2, 1) #shape (B, N, 64)
+
+                return z
+            
+
+            self.AE_encode=encode_fn
+            self.AE_encode_compiled=torch.compile(encode_fn)
+
+            self.AE_decode=lambda x: x
 
         elif AE_type=="Music2Latent4":
             from music2latent4 import Inferencer
@@ -95,13 +271,14 @@ class EDM_LDM(SDE):
                 return latent
 
 
-            def encode_fn(x, mono=False):
+            def encode_fn(x, *args, mono=False):
                 assert x.ndim==3
 
                 if not mono:
                     assert x.shape[1]==2
                 else:
                     raise NotImplementedError("Mono not implemented yet")
+                
 
                 z = self.AE.encode(x)
                 z=latent2seq(z)
@@ -213,6 +390,12 @@ class EDM_LDM(SDE):
 
         return x + step_size*score + torch.sqrt(2 * step_size) * w
 
+    def add_white_noise(self, x, t, n=None):
+        sigma=t
+        if n is None:
+            n=self.sample_prior(shape=x.shape, dtype=x.dtype).to(x.device)
+        x_perturbed = x + sigma *n
+        return x_perturbed
 
     def prepare_train_preconditioning(self, x, t,n=None, *args, **kwargs):
 
@@ -240,6 +423,10 @@ class EDM_LDM(SDE):
 
         return cin * x_perturbed, target, cnoise
 
+    def get_null_embed(self, context):
+        null_embed = torch.zeros_like(context, device=context.device)
+        return null_embed
+
     def loss_fn(self, net, sample=None, context=None, *args, **kwargs):
         """
         Loss function, which is the mean squared error between the denoised latent and the clean latent
@@ -251,30 +438,24 @@ class EDM_LDM(SDE):
 
         y=sample
 
+
         t = self.sample_time_training(y.shape[0]).to(y.device)
-
-
 
         with torch.no_grad():
             y=self.transform_forward(y, compile=True)
-            print("y", y.std())
+            #print("y", y.std())
 
             if context is not None:
-                context=self.transform_forward(context, compile=True)
+
+                z, x=self.transform_forward(context, compile=True, is_condition=True, is_test=False)
 
                 if self.cfg_dropout_prob > 0.0:
                     #context=self.transform_forward(context)
-                    null_embed = torch.zeros_like(context, device=context.device)
+                    null_embed = self.get_null_embed(z)
                     #dropout context with probability cfg_dropout_prob
-                    mask = torch.rand(context.shape[0], device=context.device) < self.cfg_dropout_prob
-                    context = torch.where(mask.view(-1,1,1), null_embed, context)
+                    mask = torch.rand(z.shape[0], device=context.device) < self.cfg_dropout_prob
+                    z = torch.where(mask.view(-1,1,1), null_embed, z)
     
-
-        #print("y shape", y.shape, "y stdev", y.std(), "context shape", context.shape, "t shape", t.shape)
-        #x=self.transform_forward(context)
-        #x=self.flatten(x)
-
-        #print("y shape", y.shape, "t shape", t.shape, "context shape", context.shape)
 
 
         input, target, cnoise = self.prepare_train_preconditioning(y, t )
@@ -285,7 +466,7 @@ class EDM_LDM(SDE):
         if input.ndim==2:
             input=input.unsqueeze(1)
 
-        estimate = net(input, cnoise, input_concat_cond=context)
+        estimate = net(input, cnoise, input_concat_cond=z)
         #estimate = net(input, cnoise, input_concat_cond=None)
         
         if target.ndim==2 and estimate.ndim==3:
@@ -294,7 +475,7 @@ class EDM_LDM(SDE):
         error=torch.square(torch.abs(estimate-target))
 
 
-        return error, self._std(t)
+        return error, self._std(t), x, y
 
 
 
@@ -324,9 +505,24 @@ class EDM_LDM(SDE):
         #print(xn.shape, cskip.shape, cout.shape, cin.shape, cnoise.shape)
         x_in=cin*xn
 
+        if cfg_scale==1.0:
+            #x_in=self.unflatten(x_in)
+            net_out=net(x_in, cnoise.to(torch.float32), input_concat_cond=cond)  #this will crash because of broadcasting problems, debug later!
+        else:
+            null_embed=self.get_null_embed(cond)
+            inputs_cond= torch.cat([cond, null_embed], dim=0)
 
-        #x_in=self.unflatten(x_in)
-        net_out=net(x_in, cnoise.to(torch.float32), input_concat_cond=cond, cfg_scale=cfg_scale)  #this will crash because of broadcasting problems, debug later!
+            x_in_cat=torch.cat([x_in, x_in], dim=0)
+
+            cnoise=torch.cat([cnoise, cnoise], dim=0)
+        
+            net_out_batch=net(x_in_cat, cnoise.to(torch.float32), input_concat_cond=inputs_cond)
+
+            cond_output, uncond_output = torch.chunk(net_out_batch, 2, dim=0)
+
+            net_out = uncond_output + (cond_output - uncond_output) * cfg_scale
+
+
         #net_out=self.flatten(net_out).to(xn.dtype)
 
         x_hat=cskip*xn + cout*net_out   
@@ -335,17 +531,66 @@ class EDM_LDM(SDE):
 
         return x_hat
 
+    def add_noise(self,x, is_test=False):
+        SNR_mean= self.context_preproc.SNR_mean
+        SNR_std= self.context_preproc.SNR_std   
+        if is_test and not self.randomize_parameters_at_test:
+            SNR_std=0.0
+        SNR= torch.randn(x.shape[0], device=x.device) * SNR_std + SNR_mean
+        x= utils.add_pink_noise(x, SNR)
+        return x
 
+    def preprocessor(self, x, is_test=False):
+            if self.apply_fxnormaug:
+                if is_test:
+                    x=self.fxnormaug_inference.forward(x)
+                else:
+                    x=self.fxnormaug_train.forward(x)
+            return x
+    
+    def apply_RMS_randomization(self, x, is_test=False):
+        if is_test and not self.randomize_parameters_at_test:
+            self.RMS=torch.zeros(x.shape[0], device=x.device) + self.RMS_mean
+        else:
+            self.RMS=torch.randn(x.shape[0], device=x.device) * self.RMS_std + self.RMS_mean
+
+        self.RMS=self.RMS.unsqueeze(-1).unsqueeze(-1)
+
+        x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
+
+        gain= self.RMS - x_RMS
+        gain_linear = 10 ** (gain / 20)
+        #print("gain_linear", gain_linear.shape, gain_linear.device, x.shape, x.device)
+        x=x* gain_linear.view(-1, 1, 1)
+
+        return x
         
-    def transform_forward(self, x, compile=False, is_condition=False):
+    def transform_forward(self, x, y=None, compile=False, is_condition=False, is_test=False, clusters=None):
         #TODO: Apply forward transform here
         #fake stereo
+
+        if is_condition:
+            x=self.preprocessor(x, is_test=is_test)
         if compile:
-            z=self.AE_encode_compiled(x)
+            with torch.no_grad():
+                if self.AE_type=="oracle":
+                    z=self.AE_encode_compiled(x, clusters)
+                else:
+                    z=self.AE_encode_compiled(x)
         else:
-            z=self.AE_encode(x)
+            with torch.no_grad():
+                if self.AE_type=="oracle":
+                    z=self.AE_encode(x, clusters)
+                else:
+                    z=self.AE_encode(x)
+
         z=einops.rearrange(z, "b t c -> b c t")
-        return z
+
+        if x.shape[1]==1:
+            #fake stereo
+            x=x.repeat(1, 2, 1)
+
+        return z, x
     
     def transform_inverse(self, z):
 

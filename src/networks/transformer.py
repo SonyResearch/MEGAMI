@@ -57,14 +57,18 @@ def or_reduce(masks):
         head = head | rest
     return head
 
-# positional embeddings
-
 class AbsolutePositionalEmbedding(nn.Module):
-    def __init__(self, dim, max_seq_len):
+    def __init__(self, dim, max_seq_len, fixed = False, seed = 42):
         super().__init__()
         self.scale = dim ** -0.5
         self.max_seq_len = max_seq_len
-        self.emb = nn.Embedding(max_seq_len, dim)
+        self.fixed=fixed
+        if fixed:
+            torch.manual_seed(seed)
+            emb = torch.randn(max_seq_len, dim)
+            self.register_buffer('emb', emb)  # replaces nn.Embedding
+        else:
+            self.emb = nn.Embedding(max_seq_len, dim)
 
     def forward(self, x, pos = None, seq_start_pos = None):
         seq_len, device = x.shape[1], x.device
@@ -76,7 +80,10 @@ class AbsolutePositionalEmbedding(nn.Module):
         if seq_start_pos is not None:
             pos = (pos - seq_start_pos[..., None]).clamp(min = 0)
 
-        pos_emb = self.emb(pos)
+        if not self.fixed:
+            pos_emb = self.emb(pos)
+        else:
+            pos_emb = self.emb[pos]
         pos_emb = pos_emb * self.scale
         return pos_emb
 
@@ -429,6 +436,7 @@ class Attention(nn.Module):
             causal = False
         
         #with torch.backends.cuda.sdp_kernel(**self.sdp_kwargs):
+        #print("q.shape", q.shape, "k.shape", k.shape, "v.shape", v.shape, "mask.shape", mask.shape if mask is not None else None, "causal", causal)
         out = F.scaled_dot_product_attention(
             q, k, v,
             attn_mask = mask,
@@ -769,7 +777,9 @@ class TransformerBlock(nn.Module):
         else:
             x = x + self.self_attn_scale(self.self_attn(self.pre_norm(x), mask = mask, rotary_pos_emb = rotary_pos_emb))
 
+            #print("crossattending")
             if context is not None and self.cross_attend:
+                #print(x.shape, context.shape, context_mask.shape if context_mask is not None else None)
                 x = x + self.cross_attn_scale(self.cross_attn(self.cross_attend_norm(x), context = context, context_mask = context_mask))
                     
             if self.conformer is not None:
@@ -798,6 +808,10 @@ class ContinuousTransformer(nn.Module):
         use_sinusoidal_emb=False,
         use_abs_pos_emb=False,
         abs_pos_emb_max_length=10000,
+        use_abs_pos_emb_for_context=False,
+        abs_pos_emb_max_length_for_context=10000,
+        use_fixed_pos_emb=False,
+        use_fixed_pos_emb_for_context=False,
         **kwargs
         ):
 
@@ -823,6 +837,19 @@ class ContinuousTransformer(nn.Module):
         self.use_abs_pos_emb = use_abs_pos_emb
         if use_abs_pos_emb:
             self.pos_emb = AbsolutePositionalEmbedding(dim, abs_pos_emb_max_length)
+        
+        self.use_abs_pos_emb_for_context = use_abs_pos_emb_for_context
+        if use_abs_pos_emb_for_context:
+            self.context_pos_emb = AbsolutePositionalEmbedding(cond_token_dim, abs_pos_emb_max_length_for_context)
+        
+        if use_fixed_pos_emb :
+            assert not use_abs_pos_emb, 'use_fixed_orthogonal_pos_emb and use_abs_pos_emb cannot be used together'
+            self.pos_emb = AbsolutePositionalEmbedding(dim, abs_pos_emb_max_length, fixed=True)
+            self.use_abs_pos_emb=True
+        if use_fixed_pos_emb_for_context:
+            assert not use_abs_pos_emb_for_context, 'use_fixed_orthogonal_pos_emb_for_context and use_abs_pos_emb_for_context cannot be used together'
+            self.context_pos_emb = AbsolutePositionalEmbedding(cond_token_dim, abs_pos_emb_max_length_for_context, fixed=True)
+            self.use_abs_pos_emb_for_context = True
 
         self.global_cond_embedder = None
         if global_cond_dim is not None:

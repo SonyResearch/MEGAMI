@@ -1,0 +1,78 @@
+name: "2nd-order-Heun-unconditional" #same as the file name, try to do that for all testers
+
+tester:
+  _target_: 'testing.tester_multitrack.Tester'
+
+sampler:
+  _target_: 'inference.sampler_euler_heun_multitrack.SamplerEulerHeun'
+
+modes: ["style_conditional_fxnorm_multitrack"] #modes to test
+
+
+compute_metrics: True #if true, the metrics will be computed after sampling
+#metrics: ["pairwise-spectral", "pairwise-panning", "pairwise-dynamic", "pairwise-loudness", "pairwise-mss-lr", "pairwise-mss-ms", "pairwise-mldr-lr", "pairwise-mldr-ms", "pairwise-fx_encoder", "pairwise-AFxRep"]
+
+metrics:
+  - "kad-fxenc2048AFv3-fxenc++-multitrack"
+  - "kad-fxenc2048AFv3-AF-multitrack"
+  - "pairwise-style-multitrack-fxenc2048AFv3-fxenc++"
+  - "pairwise-style-multitrack-fxenc2048AFv3-AF"
+
+checkpoint: None
+
+batch_size: 16 #batch size for sampling, should be 1 for conditional sampling
+
+sampling_params:
+  same_as_training: False #if true, the sampling parameters will be the same as the ones used for training (sigma_data, sigma_min, sigma_max and rho)
+  sde_hp:
+    sigma_data: 0.025 #default for maestro
+    sigma_min: 5e-4
+    sigma_max: 5 #this is sigma_start
+    rho: 10
+  Schurn: 0
+  Snoise: 1
+  Stmin: 0
+  Stmax: 10
+  order: 1 #order of the sampler (1 or 2)
+  T: 51 #number of discretization steprs
+  schedule: "edm" #"log": log schedule using the parameters in sampling_params
+
+cfg_scale: 1.0
+
+#experiment configuration for different testing modes
+
+unconditional:
+  num_samples: 1
+  audio_len: 525312
+
+shape: [1, 64, 16] #shape of the data to be generated
+
+  
+AFxRep_args:
+  distance_type: "cosine" #distance metric to use for the AFxRep
+  ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/tmp/afx-rep.ckpt"
+
+FAD_args:
+  do_PCA_figure: True #if True, the FAD figure will be computed
+
+KAD_args: 
+  do_PCA_figure: True #if True, the FAD figure will be computed
+  do_TSNE_figure: True #if True, the FAD figure will be computed
+  kernel: "gaussian" #kernel to use for the KAD metric
+  PCA_fit_mode: "target"
+
+
+fx_encoder_plusplus_args:
+  distance_type: "cosine"
+  ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/utils/feature_extractors/ckpt/fxenc_plusplus_default.pt"
+
+
+#logging configuration
+wandb:
+  use: True
+  entity: "eloimoliner"
+  project: "project_test_style_03_06"
+  num_examples_to_log: 4
+  log_every: 10
+  run_name: "test-style-conditional-dry-vocals-diffSTFT"
+  tags: Null

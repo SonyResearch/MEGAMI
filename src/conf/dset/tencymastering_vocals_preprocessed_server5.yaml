@@ -17,7 +17,9 @@ train:
     #rms_dry: -18
     #normalize_mode: Null
 
-  num_examples: 100
+  x_as_mono: True
+
+  num_examples: -1
 
   RMS_threshold_dB: -40.0
  
@@ -44,10 +46,14 @@ validation:
 
   num_examples: 100
 
+  x_as_mono: True
+
   RMS_threshold_dB: -40.0
  
   #random seed
   seed: 42
+
+
 
 test:
   _target_: datasets.tency_mastering_vocals.TencyMastering_Vocals_Test
@@ -69,6 +75,8 @@ test:
     #normalize_mode: Null
 
   num_examples: 100
+
+  x_as_mono: True
 
   RMS_threshold_dB: -40.0
  

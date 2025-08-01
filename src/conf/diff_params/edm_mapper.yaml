@@ -1,0 +1,22 @@
+#Elucidated Diffusion Model (Karras et al. 2022)
+_target_: "diff_params.edm_mapper.EDM"
+
+#defaults: 
+#  - shared
+
+# SDE hyperparameters
+type: "ve_karras"
+
+cfg_dropout_prob: 0.1
+
+use_MSS: True #if True, the MSS_mslr loss will be used
+weifght_MSS: 0.25 #weight for the MSS_mslr loss
+
+sde_hp:
+  sigma_data: 0.05 #default for maestro
+  sigma_min: 1e-5
+  sigma_max: 10
+  rho: 10
+  max_sigma: 10
+
+default_shape: [1, 2, 524288] #default shape for the input data, 1 channel, 2 outputs, 524288 samples
