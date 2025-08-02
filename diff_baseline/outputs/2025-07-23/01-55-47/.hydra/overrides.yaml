@@ -1,0 +1,11 @@
+- model_dir=/data2/eloi/experiments_baselines/baseline_diffSTFT_dry
+- exp.num_workers=8
+- exp.batch_size=4
+- exp.resume=True
+- exp.compile=False
+- dset.validation_2.num_tracks=1
+- dset.validation_2.num_examples=16
+- dset.validation.num_tracks=1
+- dset.validation.num_examples=16
+- logging=base_logging_1C
+- logging.log=True
