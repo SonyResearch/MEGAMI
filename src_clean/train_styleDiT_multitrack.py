@@ -19,7 +19,7 @@ import utils.training_utils as t_utils
 
 from utils.collators import collate_multitrack
 
-from inference.tester_styleDiT_multitrack import Tester
+from testing.tester_styleDiT_multitrack import Tester
 import copy
 
 # ----------------------------------------------------------------------------

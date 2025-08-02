@@ -81,8 +81,7 @@ class Trainer():
         self.network.to(self.device)
 
         # Logger Setup
-        if self.rank == 0:
-            if self.args.logging.log:
+        if self.args.logging.log:
                 self.setup_wandb()
                 if self.tester is not None:
                     self.tester.setup_wandb_run(self.wandb_run)
@@ -104,10 +103,10 @@ class Trainer():
 
             Fxencoder_kwargs= self.args.exp.fx_encoder_plusplus_args
 
-            from evaluation.feature_extractors import load_fx_encoder_plusplus_2048
+            from utils.feature_extractors import load_fx_encoder_plusplus_2048
             feat_extractor = load_fx_encoder_plusplus_2048(Fxencoder_kwargs, self.device)
 
-            from utils.AF_features_embedding_v6 import AF_fourier_embedding
+            from utils.feature_extractors.AF_features_embedding import AF_fourier_embedding
             AFembedding= AF_fourier_embedding(device=self.device)
 
             def fxencode_fn(x):

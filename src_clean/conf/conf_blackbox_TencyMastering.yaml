@@ -31,7 +31,7 @@ exp:
   rms_normalize_y: True #if True, the target y will be normalized to a fixed RMS value
 
   CLAP_args:
-    ckpt_path: "/data2/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
+    ckpt_path: "checkpoints/music_audioset_epoch_15_esc_90.14.patched.pt"
     distance_type: "cosine"
     normalize: True #if True, the features will be normalized
     use_adaptor: False #if True, the features will be adapted to the CLAP space
@@ -41,13 +41,9 @@ exp:
     noise_sigma: 0.1 #sigma of the orthogonal noise to
 
   
-  AFxRep_args:
-    distance_type: "cosine" #distance metric to use for the AFxRep
-    ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/tmp/afx-rep.ckpt"
-
   fx_encoder_plusplus_args:
     distance_type: "cosine"
-    ckpt_path: "/home/eloi/projects/project_mfm_eloi/src/utils/feature_extractors/ckpt/fxenc_plusplus_default.pt"
+    ckpt_path: "checkpoints/fxenc_plusplus_default.pt"
 
 
   lr_rampup_it: 10 
@@ -127,16 +123,14 @@ network:
   use_CLAP: True #if True, the CLAP features will be used as conditioning
 
   CLAP_args:
-    ckpt_path: "/data2/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
+    ckpt_path: "checkpoints/music_audioset_epoch_15_esc_90.14.patched.pt"
     distance_type: "cosine"
     normalize: True #if True, the features will be normalized
     use_adaptor: False #if True, the features will be adapted to the CLAP space
-    adaptor_checkpoint: "/data2/eloi/experiments/CLAP_regressor_sim_multitrack/MLP_CLAP_regressor-5000.pt"
-    adaptor_type: "MLP_CLAP_regressor"
+    adaptor_checkpoint: Null
+    adaptor_type: Null
     add_noise: False #if True, the features will be augmented with  noise
-    noise_sigma: 0.022 #sigma of the  noise to
-
-  
+    noise_sigma: Null #sigma of the  noise to
 
 hydra:
   job:

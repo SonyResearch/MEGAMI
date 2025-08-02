@@ -15,22 +15,9 @@ n="S9v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadapto
 PATH_EXPERIMENT=/data5/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
 
-#python train.py --config-name=$conf \
-#  model_dir=$PATH_EXPERIMENT \
-#  exp.batch_size=4 \
-
 
 # Number of GPUs to use
-export CUDA_VISIBLE_DEVICES=2
-NUM_GPUS=1
-#MASTER_PORT=29500
-MASTER_PORT=29500
-
-# Launch the training script with torchrun for DDP
-#torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT train_ddp.py --config-name=$conf  \
-#  model_dir=$PATH_EXPERIMENT \
-#  exp.optimizer.lr=1e-4 \
-#  exp.batch_size=4 \
+export CUDA_VISIBLE_DEVICES=3
 
 python train_styleDiT_multitrack.py --config-name=$conf  \
   model_dir=$PATH_EXPERIMENT \
@@ -44,7 +31,3 @@ python train_styleDiT_multitrack.py --config-name=$conf  \
   exp.skip_first_val=True \
   exp.optimizer.lr=1e-4 \
   logging.log=True \
-  #dset.validation.num_tracks=10 \
-  #dset.validation_2.num_tracks=10 \
-
-  #dset=tencymastering_vocals_server5 \
