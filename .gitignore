@@ -5,3 +5,5 @@ src/audio_examples
 __pycache__/
 *.py[cod]
 *$py.class
+src_clean/utils/feature_extractors/laion_clap/630k-audioset-best.pt
+src/utils/laion_clap/630k-audioset-best.pt
