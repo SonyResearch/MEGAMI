@@ -458,6 +458,7 @@ def get_panning_rms(sps, freqs=[[0, 22050]], sr=44100, n_fft=2048):
         p_rms.append(p_rms_)
     
     return np.asarray(p_rms)
+
 def compute_panning_features(audio_out, audio_tar, sr, fft_size=4096, hop_length=1024):
     """
     Computes panning features' mape error using a running mean

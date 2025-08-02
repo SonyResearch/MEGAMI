@@ -8,7 +8,7 @@ from importlib import import_module
 import torch
 
 
-from evaluation.feature_extractors import load_AFxRep, load_fx_encoder, load_fx_encoder_plusplus, load_MERT, load_CLAP, load_CLAP_standard
+from evaluation.feature_extractors import load_AFxRep, load_fx_encoder, load_fx_encoder_plusplus, load_MERT, load_CLAP, load_CLAP_standard, load_bark_spectrum, load_spectral_features, load_dynamic_features, load_panning_features
 
 from utils.log import make_PCA_figure
 
@@ -208,7 +208,22 @@ class DistMetric:
             assert self.model_args is not None, "model_args must be provided for CLAP type"
 
             self.feat_extractor = load_CLAP_standard(self.model_args, self.device)
-
+        elif self.type == "bark":
+            self.model_args= kwargs.get("bark_args", None)
+            assert self.model_args is not None, "model_args must be provided for bark type" 
+            self.feat_extractor= load_bark_spectrum(self.model_args, self.device)
+        elif self.type == "spectral":
+            self.model_args= kwargs.get("spectral_args", None)
+            assert self.model_args is not None, "model_args must be provided for spectral type"
+            self.feat_extractor = load_spectral_features(self.model_args, self.device)
+        elif self.type == "dynamic":
+            self.model_args= kwargs.get("dynamic_args", None)
+            assert self.model_args is not None, "model_args must be provided for dynamic type"
+            self.feat_extractor = load_dynamic_features(self.model_args, self.device)
+        elif self.type == "panning":
+            self.model_args= kwargs.get("panning_args", None)
+            assert self.model_args is not None, "model_args must be provided for panning type"
+            self.feat_extractor = load_panning_features(self.model_args, self.device)
 
         else:
             raise ValueError(f"Unknown type: {self.type}. Supported types: fx_encoder, fx_encoder_plusplus, AFxRep-mid, AFxRep-side, AFxRep")
@@ -469,7 +484,7 @@ class KADFeatures(DistMetric):
 
 
 
-    def compute(self, dict_y, dict_y_hat, dict_x, dict_p_hat=None, dict_cluster=None, *args, **kwargs):
+    def compute(self, dict_y, dict_y_hat, dict_x, dict_p_hat=None, dict_cluster=None, normalize=False, *args, **kwargs):
         """
         Compute the pairwise spectral metric.
         
@@ -572,6 +587,19 @@ class KADFeatures(DistMetric):
                 dict_features_y_hat[key] = feat_y_hat
                 #dict_features_x[key] = feat_x
             
+        if normalize:
+            #compute normalization statistics wrt to reference features
+            y_values = list(dict_features_y.values())
+            y_values = torch.cat(y_values, dim=0)
+            mean= y_values.mean(dim=0, keepdim=True)
+            std= y_values.std(dim=0, keepdim=True)
+
+            #normalize features
+            for key in dict_features_y.keys():
+                dict_features_y[key] = (dict_features_y[key] - mean) / (std + 1e-8)
+                dict_features_y_hat[key] = (dict_features_y_hat[key] - mean) / (std + 1e-8)
+
+
         dict_output = {}
         if self.KAD_args.do_PCA_figure:
             fig=self.do_PCA_figure(dict_features_y, dict_features_y_hat, fit_mode=self.KAD_args.PCA_fit_mode, dict_cluster=dict_cluster)
