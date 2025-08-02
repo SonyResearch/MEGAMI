@@ -26,7 +26,7 @@ from pymixconsole.processor import Processor
 from random import shuffle
 from scipy.signal import oaconvolve
 import soundfile as sf
-import soxbindings as sox
+#import soxbindings as sox
 from typing import List, Optional, Tuple, Union, Dict
 from numba import jit
 

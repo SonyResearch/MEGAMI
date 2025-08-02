@@ -5,14 +5,14 @@
 
 export HYDRA_FULL_ERROR=1 
 
-source ~/myenv_clean/bin/activate
+source ~/myenv/bin/activate
 
 # main config
 conf=conf_S4v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP.yaml
 
 n="S4v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP"
 
-PATH_EXPERIMENT=/data5/eloi/experiments/$n
+PATH_EXPERIMENT=/data4/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
 
 #python train.py --config-name=$conf \
