@@ -149,7 +149,7 @@ def apply_loud_normalization(x, lufs=-23, sample_rate=44100,device=None):
 
 
 
-from utils.feature_extractors.dsp_features import compute_log_rms_gated_v2, compute_crest_factor, compute_stereo_width, compute_stereo_imbalance, compute_log_spread
+from utils.feature_extractors.dsp_features import compute_log_rms_gated_max, compute_crest_factor, compute_stereo_width, compute_stereo_imbalance, compute_log_spread
 
 def apply_RMS_normalization(x, RMS_norm=-25, device=None, use_gate=False):
         if device is None:
@@ -159,7 +159,7 @@ def apply_RMS_normalization(x, RMS_norm=-25, device=None, use_gate=False):
 
         x_RMS_ref=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
         if use_gate:
-            x_RMS = compute_log_rms_gated_v2(x).unsqueeze(-1)
+            x_RMS = compute_log_rms_gated_max(x).unsqueeze(-1)
         else:
             x_RMS=20*torch.log10(torch.sqrt(torch.mean(x**2, dim=(-1), keepdim=True).mean(dim=-2, keepdim=True)))
         
@@ -175,71 +175,3 @@ def apply_RMS_normalization(x, RMS_norm=-25, device=None, use_gate=False):
         return x
 
 
-def synthesize_sinc_train(num_samples, sample_rate=44100, min_cutoff_ratio=0.1, max_cutoff_ratio=0.99, min_gain=0.2, max_gain=1.0, mean_pulse_rate=3):
-    """
-    Synthesize a sinc train signal with random parameters.
-    
-    Args:
-        duration (float): Duration of the signal in seconds.
-        sample_rate (int): Sample rate in Hz.
-        min_cutoff_ratio (float): Minimum cutoff frequency ratio.
-        max_cutoff_ratio (float): Maximum cutoff frequency ratio.
-        min_gain (float): Minimum gain for the sinc function.
-        max_gain (float): Maximum gain for the sinc function.
-    
-    Returns:
-        torch.Tensor: Synthesized sinc train signal.
-    """
-
-    duration = num_samples / sample_rate  # Calculate duration from number of samples and sample rate
-
-    time = torch.linspace(0, duration, num_samples)
-
-    # Nyquist frequency is half the sample rate
-    nyquist_freq = sample_rate / 2  # 22050 Hz
-
-    # Cutoff ratio range (how close to Nyquist)
-    # Function to create a sinc pulse with specified cutoff frequency
-    def sinc_pulse(t, center, cutoff_freq, gain):
-        # For a lowpass filter, the sinc function is scaled by 2*cutoff_freq
-        normalized_t = 2 * cutoff_freq * (t - center)
-        
-        # Handle the special case where normalized_t is close to zero
-        zero_indices = torch.abs(normalized_t) < 1e-10
-        result = torch.zeros_like(normalized_t)
-        result[zero_indices] = 2 * cutoff_freq  # The peak value
-        
-        # Calculate sinc for non-zero values
-        non_zero = ~zero_indices
-        result[non_zero] = 2 * cutoff_freq * torch.sin(torch.pi * normalized_t[non_zero]) / (torch.pi * normalized_t[non_zero])
-    
-        # flip polarity with a probability of 50%
-        if torch.rand(1).item() < 0.5:
-            result = -result
-        
-        # Apply gain
-        return gain * result
-
-    # Generate random pulse locations
-    total_pulses = int(mean_pulse_rate * duration)
-    pulse_times = torch.sort(torch.rand(total_pulses) * duration)[0]
-
-    # Generate random gains for each pulse
-    pulse_gains = min_gain + (max_gain - min_gain) * torch.rand(total_pulses)
-
-    # Generate random cutoff ratios for each pulse
-    pulse_cutoff_ratios = min_cutoff_ratio + (max_cutoff_ratio - min_cutoff_ratio) * torch.rand(total_pulses)
-    pulse_cutoff_freqs = pulse_cutoff_ratios * nyquist_freq
-
-    # Create the signal
-    signal = torch.zeros(num_samples)
-    for i, pulse_time in enumerate(pulse_times):
-        cutoff_freq = pulse_cutoff_freqs[i]
-        pulse = sinc_pulse(time, pulse_time, cutoff_freq, pulse_gains[i])
-        signal += pulse
-
-    # Normalize the signal to avoid clipping
-    if torch.max(torch.abs(signal)) > 0:
-        signal = signal / torch.max(torch.abs(signal))
-
-    return signal.unsqueeze(0)  # Ensure the output is a 1D tensor

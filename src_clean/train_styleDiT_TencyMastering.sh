@@ -8,9 +8,9 @@ export HYDRA_FULL_ERROR=1
 source ~/myenv_clean/bin/activate
 
 # main config
-conf=conf_styleDiT_TencyDB.yaml
+conf=conf_styleDiT_TencyMastering.yaml
 
-n="S9v6"
+n="S4v6"
 
 PATH_EXPERIMENT=/data4/eloi/experiments/$n
 mkdir -p $PATH_EXPERIMENT
@@ -24,8 +24,8 @@ python train_styleDiT_multitrack.py --config-name=$conf  \
   exp.num_workers=10 \
   exp.resume=True \
   exp.compile=True \
-  dset.validation.num_tracks=16 \
-  dset.validation_2.num_tracks=16 \
+  dset.validation.num_tracks=1 \
+  dset.validation_2.num_tracks=1 \
   exp.batch_size=8 \
   exp.max_tracks=14 \
   exp.skip_first_val=True \

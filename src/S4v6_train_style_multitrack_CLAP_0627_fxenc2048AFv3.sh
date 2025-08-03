@@ -12,11 +12,7 @@ conf=conf_S4v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP.yam
 
 n="S4v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP"
 
-<<<<<<< HEAD
 PATH_EXPERIMENT=/data4/eloi/experiments/$n
-=======
-PATH_EXPERIMENT=/data2/eloi/experiments/$n
->>>>>>> 09d4c541f458c2cf24d45433c7aa9fd2e7715d51
 mkdir -p $PATH_EXPERIMENT
 
 #python train.py --config-name=$conf \
