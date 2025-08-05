@@ -1,0 +1,19 @@
+#Elucidated Diffusion Model (Karras et al. 2022)
+_target_: "diff_params.edm.EDM"
+
+#defaults: 
+#  - shared
+
+# SDE hyperparameters
+type: "ve_karras"
+
+cfg_dropout_prob: 0.2
+
+sde_hp:
+  sigma_data: 0.1 #default for maestro
+  sigma_min: 5e-4
+  sigma_max: 100
+  rho: 10
+  max_sigma: 100
+
+default_shape: [1,4, 2, 262144] #4 tracks, 2 channels, 262144 samples (6 seconds at 44100Hz)
