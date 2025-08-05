@@ -579,8 +579,12 @@ class KADFeatures(DistMetric):
                 #x=torch.tensor(x).permute(1,0).unsqueeze(0).to(self.device)
         
                 with torch.no_grad():
-                    feat_y= self.feat_extractor(y)
-                    feat_y_hat= self.feat_extractor(y_hat)
+                    try:
+                        feat_y= self.feat_extractor(y)
+                        feat_y_hat= self.feat_extractor(y_hat)
+                    except Exception as e:
+                        print(f"Error extracting features for key {key}: {e}")
+                        continue
                     #feat_x= self.feat_extractor(x)
 
                 dict_features_y[key] = feat_y

@@ -19,7 +19,7 @@ class SamplerEulerHeun(Sampler):
         self.cond=None
         self.cfg_scale = 1.0
 
-    def predict_conditional(
+    def predict_DPS(
             self,
             shape,  # observations (lowpssed signal) Tensor with shape ??
             cond=None,
@@ -27,7 +27,10 @@ class SamplerEulerHeun(Sampler):
             device=None,  # device
             apply_inverse_transform=True,  # whether to apply inverse transform
             taxonomy=None,  # taxonomy for the conditional input
-            masks=None  # masks for the conditional input
+            masks=None,  # masks for the conditional input
+            fwd_operator=None,
+            zeta=None,
+            dtype=torch.float32,  # data type
     ):
         self.cond = cond
         assert self.cond is not None, "Conditional input is None"
@@ -37,7 +40,70 @@ class SamplerEulerHeun(Sampler):
 
         self.cfg_scale = cfg_scale
 
-        return self.predict(shape, device, apply_inverse_transform=apply_inverse_transform)
+        # get the noise schedule
+        t = self.create_schedule().to(device).to(torch.float32)
+
+        # sample prior
+        x = self.diff_params.sample_prior(t=t[0], shape=shape, dtype=dtype)
+
+        # parameter for langevin stochasticity, if Schurn is 0, gamma will be 0 to, so the sampler will be deterministic
+        gamma = self.get_gamma(t).to(device)
+
+        for i in tqdm(range(0, self.T-1, 1)):
+            self.step_counter = i
+            x, x_den = self.step_DPS(x, t[i], t[i + 1], gamma[i], fwd_operator, zeta)
+
+
+        if apply_inverse_transform:
+            with torch.no_grad():
+                x_den_wave=self.diff_params.transform_inverse(x_den.detach())
+
+            return x_den_wave.detach(), None
+        else:
+            return x_den.detach(), None
+
+
+    def predict_conditional(
+            self,
+            shape,  # observations (lowpssed signal) Tensor with shape ??
+            cond=None,
+            cfg_scale=1.0,
+            device=None,  # device
+            apply_inverse_transform=True,  # whether to apply inverse transform
+            taxonomy=None,  # taxonomy for the conditional input
+            masks=None,  # masks for the conditional input
+            dtype=torch.float32,  # data type
+    ):
+        self.cond = cond
+        assert self.cond is not None, "Conditional input is None"
+
+        self.taxonomy = taxonomy
+        self.masks = masks
+
+        self.cfg_scale = cfg_scale
+
+        # get the noise schedule
+        t = self.create_schedule().to(device).to(torch.float32)
+
+        # sample prior
+        x = self.diff_params.sample_prior(t=t[0], shape=shape, dtype=dtype)
+
+        # parameter for langevin stochasticity, if Schurn is 0, gamma will be 0 to, so the sampler will be deterministic
+        gamma = self.get_gamma(t).to(device)
+
+        for i in tqdm(range(0, self.T-1, 1)):
+            self.step_counter = i
+            x, x_den = self.step(x, t[i], t[i + 1], gamma[i])
+
+
+        if apply_inverse_transform:
+            with torch.no_grad():
+                x_den_wave=self.diff_params.transform_inverse(x_den.detach())
+
+            return x_den_wave.detach(), None
+        else:
+            return x_den.detach(), None
+
 
     def predict_unconditional(
             self,
@@ -98,10 +164,49 @@ class SamplerEulerHeun(Sampler):
             x_hat = x + ((t_hat ** 2 - t ** 2) ** (1 / 2)) * epsilon  # Perturb data
         return x_hat, t_hat
 
-    def step(self, x_i, t_i, t_iplus1, gamma_i, blind=False):
+    def step_DPS(self, x_i, t_i, t_iplus1, gamma_i , fwd_operator=None, zeta=None):
+
+            #with torch.no_grad():
+
+            x_hat, t_hat=self.stochastic_timestep(x_i, t_i, gamma_i)
+
+            x_hat.requires_grad=True
+
+            x_den = self.get_Tweedie_estimate(x_hat, t_hat)
+
+            #optionally L2 normalize here...
+
+            #compute likelihood score
+            loss=fwd_operator(x_den)
+
+            loss.backward(retain_graph=False)
+
+            grads= x_hat.grad
+
+            #lets normalize the grads
+            norm_factor= torch.sqrt(x_hat.view(-1).shape[0])
+            normguide=torch.norm(grads)/ norm_factor
+            zeta= zeta/(normguide+1e-8)
+            lh_score=-zeta*grads/t_hat
+
+            x_hat.detach_()  # detach x_hat to avoid accumulating gradients
+            x_den.detach_()  # detach x_den to avoid accumulating gradients
+
+            #compute normal score
+            score = self.Tweedie2score(x_den, x_hat, t_hat)
+
+            ode_integrand = self.diff_params._ode_integrand(x_hat, t_hat, score+ lh_score)
+
+            dt = t_iplus1 - t_hat
+
+            x_iplus1 = x_hat + dt * ode_integrand
+
+            return x_iplus1, x_den
+
+    def step(self, x_i, t_i, t_iplus1, gamma_i ):
 
         with torch.no_grad():
-            x_hat, t_hat = x_i, t_i
+            x_hat, t_hat = self.stochastic_timestep(x_i, t_i, gamma_i)
             x_den = self.get_Tweedie_estimate(x_hat, t_hat)
             score = self.Tweedie2score(x_den, x_hat, t_hat)
             ode_integrand = self.diff_params._ode_integrand(x_hat, t_hat, score)
@@ -133,30 +238,21 @@ class SamplerEulerHeun(Sampler):
             shape,  # observations (lowpssed signal) Tensor with shape ??
             device,  # lambda function
             dtype=torch.float32,  # data type
-            blind=False,
             apply_inverse_transform=True  # whether to apply inverse transform
     ):
 
         # get the noise schedule
         t = self.create_schedule().to(device).to(torch.float32)
 
-
-        #shape_example, dtype = self.get_domain_shape(shape, device)
-        #print("shape_example", shape_example, dtype)
-
         # sample prior
         x = self.diff_params.sample_prior(t=t[0], shape=shape, dtype=dtype)
-
-        #print("xT", x.shape, shape_example, x.dtype, dtype)
-
-        x_init = x.clone()
 
         # parameter for langevin stochasticity, if Schurn is 0, gamma will be 0 to, so the sampler will be deterministic
         gamma = self.get_gamma(t).to(device)
 
         for i in tqdm(range(0, self.T-1, 1)):
             self.step_counter = i
-            x, x_den = self.step(x, t[i], t[i + 1], gamma[i], blind)
+            x, x_den = self.step(x, t[i], t[i + 1], gamma[i])
 
 
         if apply_inverse_transform:

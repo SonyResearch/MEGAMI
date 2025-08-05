@@ -15,9 +15,9 @@ from datasets.eval_benchmark import load_audio
 from evaluation.dist_metrics import KADFeatures
 
 # see device 1
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-path_test_set="/data5/eloi/test_set/MDX_TM_benchmark"
+path_test_set="/data4/eloi/test_set/MDX_TM_benchmark"
 
 set="MDX_TM"
 
@@ -82,7 +82,7 @@ for feature in features:
 
     elif feature=="CLAP":
         clap_args = {
-            "ckpt_path": "/data5/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt",
+            "ckpt_path": "/home/eloi/projects/project_mfm_eloi/src_clean/checkpoints/music_audioset_epoch_15_esc_90.14.patched.pt",
             "distance_type": "cosine",
             "normalize": True,  # if True, the features will be normalized
             "use_adaptor": False,  # if True, the features will be adapted to the CLAP space
@@ -194,11 +194,13 @@ dataframe= pd.DataFrame(columns=["method"] +list(KAD_metrics.keys()))
 
 filename_results="results_eval/results_KAD"+f"_{set}_308.csv"
 
-#methods=[ "fxnorm_automix_S_Lb", "fxnorm_automix_L_Lb",]
+methods=[ "fxnorm_automix_S_Lb", "fxnorm_automix_L_Lb",]
 #methods=["mst_oracle",  "equal_loudness", "diff_baseline",  "proposed_oracle", "proposed_centroid_close", "proposed_centroid_far", "proposed_random", "only_rms_centroid_close", "only_rms_centroid_far", "only_rms_random" ]
 #methods=["mst_oracle",  "equal_loudness", "diff_baseline",  "proposed_oracle", "proposed_random", "only_rms_random" , "proposed_centroid_close", "proposed_centroid_far", "only_rms_centroid_close", "only_rms_centroid_far"]
 #methods=["cfg2_random", "cfg2_random_only_rms", "cfg1_T100_random", "cfg1_T100_onlyrms", "S3_random", "S3_onlyrms", "S4_random", "S4_onlyrms"]
-methods=["S3_random", "S3_onlyrms", "S4_random", "S4_onlyrms"]
+#methods=["S3_random", "S3_onlyrms", "S4_random", "S4_onlyrms"]
+#methods=["WUN_4instr", "WUN_14instr", "DMC_14instr"]
+#methods=["WUN_4instr", "WUN_14instr", "DMC_14instr"]
 
 
 for method in methods:
@@ -223,11 +225,11 @@ for method in methods:
                return pred_mixture
         elif method=="fxnorm_automix_S_Lb":
            def get_pred_file_path(dir):
-               pred_mixture= os.path.join(dir,"fxnorm_automix_S_Lb", "mixture_output.wav")
+               pred_mixture= os.path.join(dir,"fxnorm_automix_S_Lb_v2", "mixture_output.wav")
                return pred_mixture
         elif method=="fxnorm_automix_L_Lb":
            def get_pred_file_path(dir):
-               pred_mixture= os.path.join(dir,"fxnorm_automix_L_Lb", "mixture_output.wav")
+               pred_mixture= os.path.join(dir,"fxnorm_automix_L_Lb_v2", "mixture_output.wav")
                return pred_mixture
         elif method=="proposed_oracle":
            def get_pred_file_path(dir):
@@ -289,6 +291,18 @@ for method in methods:
            def get_pred_file_path(dir):
                pred_mixture= os.path.join(dir,"stylediffpipeline_S4v6_MF3wetv6_MDX_TM_benchmark_cfg_1", "only_rms_random.wav")
                return pred_mixture
+        elif method=="WUN_4instr":
+            def get_pred_file_path(dir):
+                pred_mixture= os.path.join(dir,"WUN_4instr", "pred_mixture.wav")
+                return pred_mixture
+        elif method=="WUN_14instr":
+            def get_pred_file_path(dir):
+                pred_mixture= os.path.join(dir,"WUN_14instr", "pred_mixture.wav")
+                return pred_mixture
+        elif method=="DMC_14instr":
+            def get_pred_file_path(dir):
+                pred_mixture= os.path.join(dir,"DMC_14instr", "pred_mixture.wav")
+                return pred_mixture
         else:
            raise ValueError(f"Unknown method: {method}")
     

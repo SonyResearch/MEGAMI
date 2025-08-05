@@ -285,6 +285,8 @@ class Eval_Benchmark(torch.utils.data.Dataset):
 
                 assert len(x_dry_tracks) > 0, "No dry tracks found in {}".format(dry_path)
 
+                assert len(x_dry_tracks) <= 14, "Too many dry tracks found in {}, expected at most 4, got {}".format(dry_path, len(x_dry_tracks))
+
                 if "wet" in self.mode:
                     assert len(x_dry_tracks)==len(x_wet_tracks) 
 

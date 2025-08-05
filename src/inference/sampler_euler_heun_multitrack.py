@@ -101,7 +101,7 @@ class SamplerEulerHeun(Sampler):
     def step(self, x_i, t_i, t_iplus1, gamma_i, blind=False):
 
         with torch.no_grad():
-            x_hat, t_hat = x_i, t_i
+            x_hat, t_hat = self.stochastic_timestep(x_i, t_i, gamma_i)
             x_den = self.get_Tweedie_estimate(x_hat, t_hat)
             score = self.Tweedie2score(x_den, x_hat, t_hat)
             ode_integrand = self.diff_params._ode_integrand(x_hat, t_hat, score)
