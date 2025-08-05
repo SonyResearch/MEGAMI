@@ -1,0 +1,93 @@
+
+defaults:
+  - dset: tencymastering_multitrack_paired_server217
+  - tester: Null
+  - network: dmc
+  - logging: base_logging_1C
+
+model_dir: "/data4/eloi/experiments/1A_tencymastering_vocals"
+
+dset:
+  train:
+    segment_length: 262144  # Replace with your desired value
+  validation:
+    segment_length: 262144  # If you want to change validation segment length too
+  validation_2:
+    segment_length: 262144  # If you want to change validation_2 segment length
+
+exp:
+  exp_name: "1A_tencymastering_vocals" #name of the experiment
+
+  trainer:
+    _target_: "training.trainer_ddp.Trainer"
+   
+  use_gated_RMSnorm: True
+  max_tracks: 14
+
+  #main options
+  #related to optimization
+  optimizer:
+    _target_: "torch.optim.AdamW"
+    lr: 1e-4 #            help='Learning rate',
+    betas: [0.9, 0.999]
+    eps: 1e-8 #for numerical stability, we may need to modify it if usinf fp16
+    weight_decay: 0.01 #weight decay for the optimizer
+  
+  loss:
+    type: "sd"
+    weight: 1.0 #weight for the loss, if you want to use multiple losses, you can add them here
+
+  lr_rampup_it: 1000 
+
+  #for lr scheduler (not noise schedule!!) TODO (I think)
+  scheduler_step_size: 60000
+  scheduler_gamma: 0.8
+
+  batch_size: 16
+  val_batch_size: 16 #batch size for validation, should be 1 for multitrack
+
+  # Performance-related.
+  num_workers: 4  
+
+  # I/O-related. moved to logging
+  seed: 1 # random seed
+
+  resume: False
+  resume_checkpoint: None
+
+  #audio data related
+  sample_rate: 44100
+  stereo: True
+  audio_len: 262144
+
+  ema_rate: 0.9999  
+  ema_rampup: 10000  #linear rampup to ema_rate   
+
+
+  #gradient clipping
+  use_grad_clip: True
+  max_grad_norm: 1
+
+  restore : False
+  checkpoint_id: None
+  align: False
+
+  augmentations:
+    list: ["polarity" ]
+    polarity:
+      prob: 0.5
+
+  compile: True
+
+#testing (demos)
+
+hydra:
+  job:
+    config:
+      # configuration for the ${hydra.job.override_dirname} runtime variable
+      override_dirname:
+        kv_sep: '='
+        item_sep: ','
+        # Remove all paths, as the / in them would mess up things
+        exclude_keys: ['path_experiment',
+          'hydra.job_logging.handles.file.filename']

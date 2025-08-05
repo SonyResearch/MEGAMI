@@ -1,0 +1,5 @@
+
+_target_: networks.mixwaveunet.MixWaveUNet
+
+ninputs: 4
+noutputs: 2

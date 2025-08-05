@@ -1,0 +1,956 @@
+from datetime import date
+import io
+import matplotlib.pyplot as plt
+from functools import partial
+import re
+import torch
+import os
+import wandb
+import copy
+from glob import glob
+from tqdm import tqdm
+import omegaconf
+import hydra
+import utils.log as utils_logging
+import utils.training_utils as tr_utils
+
+import soundfile as sf
+import numpy as np
+import torchaudio
+
+from utils.collators import collate_multitrack_paired
+
+from utils.data_utils import apply_RMS_normalization
+
+
+class Tester():
+    def __init__(
+            self, args, network, test_set_dict=None, device=None,
+            in_training=False,
+    ):
+        self.args = args
+        self.network = network
+        self.device = device
+        self.test_set_dict= test_set_dict
+
+        self.use_wandb = False  # hardcoded for now
+        self.in_training = in_training
+
+        if in_training:
+            self.use_wandb = True
+            # Will inherit wandb_run from Trainer
+        else:  # If we use the tester in training, we will log in WandB in the Trainer() class, no need to create all these paths
+            torch.backends.cudnn.benchmark = True
+            if self.device is None:
+                self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            
+            self.setup_wandb()
+
+        #self.taxonomy_ref = {
+        #    "9120": "FemaleLeadVocals",
+        #    "1110": "AcousticDrums",
+        #    "2200": "ElectricBass"
+        #}
+
+        #if self.args.tester.compute_metrics:
+        #    self.metrics_dict= self.prepare_metrics(self.args.tester.metrics)
+        #else:
+        #    self.metrics_dict = {}
+        
+
+        #self.taxonomy_ref_inverse = {
+        #    "FemaleLeadVocals": "9210",
+        #    "AcousticDrums": "1110",
+        #    "ElectricBass": "2200",
+        #}
+        
+
+
+    def setup_wandb(self):
+        """
+        Configure wandb, open a new run and log the configuration.
+        """
+        config = omegaconf.OmegaConf.to_container(
+            self.args, resolve=True, throw_on_missing=True
+        )
+        self.wandb_run = wandb.init(project="testing" + self.args.tester.wandb.project, entity=self.args.tester.wandb.entity,
+                                    config=config, tags=self.args.tester.wandb.tags)
+        #wandb.watch(self.network,
+        #            log_freq=self.args.logging.heavy_log_interval)
+
+        self.wandb_run.name = self.args.tester.wandb.run_name 
+        self.use_wandb = True
+
+    def setup_wandb_run(self, run):
+        # get the wandb run object from outside (in trainer.py or somewhere else)
+        self.wandb_run = run
+        self.use_wandb = True
+
+    def load_latest_checkpoint(self):
+        # load the latest checkpoint from self.args.model_dir
+        try:
+            # find latest checkpoint_id
+            save_basename = f"{self.args.exp.exp_name}-*.pt"
+            save_name = f"{self.args.model_dir}/{save_basename}"
+            list_weights = glob(save_name)
+            id_regex = re.compile(f"{self.args.exp.exp_name}-(\d*)\.pt")
+            list_ids = [int(id_regex.search(weight_path).groups()[0])
+                        for weight_path in list_weights]
+            checkpoint_id = max(list_ids)
+
+            state_dict = torch.load(
+                f"{self.args.model_dir}/{self.args.exp.exp_name}-{checkpoint_id}.pt", map_location=self.device)
+            try:
+                self.network.load_state_dict(state_dict['ema'])
+            except Exception as e:
+                print(e)
+                print("Failed to load in strict mode, trying again without strict mode")
+                self.network.load_state_dict(state_dict['model'], strict=False)
+
+            print(f"Loaded checkpoint {checkpoint_id}")
+            return True
+        except (FileNotFoundError, ValueError):
+            raise ValueError("No checkpoint found")
+
+    def load_checkpoint(self, path):
+        state_dict = torch.load(path, map_location=self.device, weights_only=False)
+        try:
+            self.it = state_dict['it']
+        except:
+            self.it = 0
+
+        print(f"loading checkpoint {self.it}")
+        return tr_utils.load_state_dict(state_dict, network=self.network)
+
+    def log_figure(self, fig, name: str, step=None):
+        # Save the figure to a buffer
+        #buf = io.BytesIO()
+        #plt.savefig(buf, format='png')
+        #buf.seek(0)
+
+        self.wandb_run.log({name: wandb.Image(fig)}, 
+                           step=step if step is not None else self.it)
+
+
+    def log_metric(self, value, name: str, step=None):
+        self.wandb_run.log(
+            {name: value},
+            step=step if step is not None else self.it
+        )
+
+    def log_audio(self, pred, name: str, it=None):
+        if it is None:
+            it = self.it 
+        if self.use_wandb:
+            #pred = pred.view(-1)
+            #maxim = torch.max(torch.abs(pred)).detach().cpu().numpy()
+            #if maxim < 1:
+            #    maxim = 1
+            print("Logging audio to wandb")
+            pred=pred.permute(1,0)
+            self.wandb_run.log(
+                {name: wandb.Audio(pred.detach().cpu().numpy() , sample_rate=self.args.exp.sample_rate)},
+                step=it)
+
+            if self.args.logging.log_spectrograms:
+                raise NotImplementedError
+
+    # ------------- UNCONDITIONAL SAMPLING ---------------#
+
+    ##############################
+    ### UNCONDITIONAL SAMPLING ###
+    ##############################
+
+
+
+    def test_conditional_multitrack_4instr(self, mode, exp_description="", input_type="dry", residual=False):
+
+        for k, test_set in self.test_set_dict.items():
+            print(f"Testing on {k} set")
+            k+= "_" + input_type  # Add input type to the key
+
+            assert len(test_set) != 0, "No samples found in test set"
+    
+            dict_y = {}
+            dict_y_hat = {}
+            dict_x = {}
+
+            i=0
+
+            if not self.in_training:
+                self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+    
+            for data  in tqdm(test_set):
+
+                x,y=data
+                x=x.to(self.device)  # x is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+                y=y.to(self.device)  # y is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+
+                print("x", x.shape, "y", y.shape)
+
+                assert y.shape[-1] == x.shape[-1], "sample_y and sample_x must have the same length"
+
+                assert x.shape[1]==4, "sample_x must have 4 tracks, but got {}".format(x.shape[1])
+                assert y.shape[1]==4, "sample_y and sample_x must have the same number of tracks"
+
+                if x.shape[2] ==2 :
+                    x=x.mean(dim=2, keepdim=True)  # Convert stereo to mono
+
+                assert x.shape[2]==1, "sample_x must have 1 channel, but got {}".format(x.shape[2])
+
+                assert y.shape[2]==2, "sample_y must have 2 channels, but got {}".format(y.shape[2])
+
+                B,N, C, T = y.shape
+
+                if input_type == "dry" or input_type == "fxnorm_dry":
+                    preds, init =self.sample_conditional_multitrack(mode, x, B=B, N=N, input_type=input_type)
+                elif input_type == "fxnorm_wet":
+                    preds, init=self.sample_conditional_multitrack(mode, y, B=B,N=N, input_type=input_type)
+
+                    
+                print("preds", preds.shape, "sample_y", y.shape, "sample_x", x.shape)
+                print("preds", preds.std(), "sample_y", y.std(), "sample_x", x.std())
+                #check the l2 norm of the predictions
+                print("L2 norm of predictions:", torch.norm(preds, p=2, dim=(-1)).mean().item())   
+
+                y= y.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+                preds = preds.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+                x= x.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+                init = init.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+
+                for b in range(B):
+        
+                    if self.use_wandb:
+                        if i < self.args.tester.wandb.num_examples_to_log:  # Log only first 10 samples
+                            self.log_audio(preds[b], f"pred_{k}_{i}", it=self.it)  # Just log first sample
+                            self.log_audio(y[b], f"original_wet_{k}_{i}", it=self.it)  # Just log first sample
+                            self.log_audio(x[b], f"original_dry_{k}_{i}", it=self.it)  # Just log first sample
+                            self.log_audio(init[b], f"init_{k}_{i}", it=self.it)  # Just log first sample
+
+                    dict_y[i] = y[b].detach().cpu().numpy()  # Store the wet audio for each track
+                    dict_y_hat[i] = preds[b].detach().cpu().numpy()  # Store the predicted audio for each track
+                    dict_x[i] = x[b].detach().cpu().numpy()  # Store the dry audio for each track
+
+                    i += 1
+            
+            if self.args.tester.compute_metrics:
+                for metric in self.metrics_dict.keys():
+                    print(f"Computing metric {metric}")
+                    result, result_dict=self.metrics_dict[metric].compute(dict_y, None, None, dict_p_hat=dict_p_hat, dict_cluster=None, dict_taxonomy=dict_taxonomy)
+    
+                    if self.use_wandb:
+                        if result is not None:
+                            self.log_metric(result, metric+"_"+k, step=self.it )
+
+                        for key, value in result_dict.items():
+                            if "figure" in key:
+                                # log figure as an image
+                                self.log_figure(value, key+"_"+k, step=self.it)
+                            else:
+                                self.log_metric(value, key+"_"+k, step=self.it)
+
+                    if not self.in_training:
+                        self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+
+    def test_benchmark(self, mode, exp_description="", input_type="dry", residual=False):
+
+        for k, test_set in self.test_set_dict.items():
+            print(f"Testing on {k} set")
+            k+= "_" + input_type  # Add input type to the key
+
+            assert len(test_set) != 0, "No samples found in test set"
+    
+            dict_y = {}
+            dict_y_hat = {}
+            dict_x = {}
+
+            i=0
+
+            if not self.in_training:
+                self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+    
+            for data  in tqdm(test_set):
+
+                x,y, mix, song_id, segment_id, path =data
+
+                x=x.to(self.device).unsqueeze(0)  # x is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+
+                masks=torch.ones((x.shape[0], x.shape[1]), device=self.device)  # masks is a tensor of shape [B, N] where B is the batch size and N is the number of tracks, it is used to mask the tracks that are not present in the batch
+
+                assert x.shape[1]==4, "sample_x must have 4 tracks, but got {}".format(x.shape[1])
+
+                if x.shape[2] ==2 :
+                    x=x.mean(dim=2, keepdim=True)  # Convert stereo to mono
+                
+                x=x.squeeze(2)
+
+                #assert x.shape[2]==1, "sample_x must have 1 channel, but got {}".format(x.shape[2])
+
+                #assert y.shape[2]==2, "sample_y must have 2 channels, but got {}".format(y.shape[2])
+
+                x_norm= x.view(x.shape[0] * x.shape[1], 1, x.shape[2])  # reshape to [B*N, 1, L]
+                x_norm=apply_RMS_normalization(x_norm, use_gate=self.args.exp.use_gated_RMSnorm)
+                x=x_norm.view(x.shape[0], x.shape[1], x.shape[2])  # reshape back to [B, N, L]
+
+
+                #pad zeros so that x is a multiple of 8192
+                original_length = x.shape[-1]
+                if x.shape[-1] % 4096 != 0:
+                    x = torch.nn.functional.pad(x, (0, 4096 - x.shape[-1] % 4096), mode='constant', value=0)
+
+                print("x", x.shape)
+                print("x", x.std())
+                print("masks", masks.shape)
+                preds,_=self.network(x, masks)
+                #print(preds.shape, preds.std())
+                if torch.isnan(preds).any():
+                    print("nan in preds")
+
+                preds=preds[..., :original_length]  # remove the padding
+
+                #preds = preds.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+                #x= x.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+                #init = init.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+
+        
+                pred= preds[0].detach().cpu().numpy()
+                #peak normalize
+                peak= np.max(np.abs(pred))
+
+                #print(peak.shape)
+
+                pred/= peak
+
+
+
+                #save the audio to a file
+                os.makedirs(os.path.join(path, "DMC_4instr"), exist_ok=True)
+                sf.write(os.path.join(path, "DMC_4instr", f"pred_mixture.wav"), pred.T, samplerate=44100)
+
+    def test_benchmark_14(self, mode, exp_description="", input_type="dry", residual=False):
+
+        for k, test_set in self.test_set_dict.items():
+            print(f"Testing on {k} set")
+            k+= "_" + input_type  # Add input type to the key
+
+            assert len(test_set) != 0, "No samples found in test set"
+    
+            dict_y = {}
+            dict_y_hat = {}
+            dict_x = {}
+
+            i=0
+
+            if not self.in_training:
+                self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+    
+            for data  in tqdm(test_set):
+
+                x,y, mix, song_id, segment_id, path =data
+
+                x=x.to(self.device).unsqueeze(0)  # x is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+
+                num_tracks = x.shape[1]
+                if x.shape[1]< 14:
+                    #cat zeros
+                    x = torch.cat([x, torch.zeros((x.shape[0], 14 - x.shape[1], x.shape[2], x.shape[3]), device=self.device)], dim=1)   
+
+                masks=torch.zeros((x.shape[0], x.shape[1]), device=self.device)  # masks is a tensor of shape [B, N] where B is the batch size and N is the number of tracks, it is used to mask the tracks that are not present in the batch
+                masks[:, :num_tracks] = 1  # Mask the tracks that are not present in the batch
+                #convert masks to boolean
+                masks=masks.bool()
+
+
+                assert x.shape[1]==14, "sample_x must have 4 tracks, but got {}".format(x.shape[1])
+
+                if x.shape[2] ==2 :
+                    x=x.mean(dim=2, keepdim=True)  # Convert stereo to mono
+                
+                x=x.squeeze(2)
+
+                x_norm= x.view(x.shape[0] * x.shape[1], 1, x.shape[2])  # reshape to [B*N, 1, L]
+                x_norm=apply_RMS_normalization(x_norm, use_gate=self.args.exp.use_gated_RMSnorm)
+                x=x_norm.view(x.shape[0], x.shape[1], x.shape[2])  # reshape back to [B, N, L]
+
+
+                #pad zeros so that x is a multiple of 8192
+                original_length = x.shape[-1]
+                if x.shape[-1] % 4096 != 0:
+                    x = torch.nn.functional.pad(x, (0, 4096 - x.shape[-1] % 4096), mode='constant', value=0)
+
+                print("x", x.shape)
+                print("x", x.std())
+                print("masks", masks.shape)
+                preds,_=self.network(x, masks)
+
+                preds=preds[..., :original_length]  # remove the padding
+
+                #preds = preds.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+                #x= x.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+                #init = init.sum(dim=1)  # Sum over the tracks, we assume that the tracks are independent and we want to evaluate the overall performance
+
+        
+                pred= preds[0].detach().cpu().numpy()
+                #peak normalize
+                peak= np.max(np.abs(pred))
+
+                #print(peak.shape)
+
+                pred/= peak
+
+
+
+                #save the audio to a file
+                os.makedirs(os.path.join(path, "DMC_14instr"), exist_ok=True)
+                sf.write(os.path.join(path, "DMC_14instr", f"pred_mixture.wav"), pred.T, samplerate=44100)
+
+    def test_conditional_multitrack(self, mode, exp_description="", input_type="dry", residual=False):
+        raise NotImplementedError("This method is not implemented yet")
+
+        for k, test_set in self.test_set_dict.items():
+
+            print(f"Testing on {k} set")
+            k+= "_" + input_type  # Add input type to the key
+
+
+            assert len(test_set) != 0, "No samples found in test set"
+    
+            dict_y = {}
+            #dict_x = {}
+            dict_p_hat = {}
+            dict_taxonomy = {}
+            #dict_p_target = {}
+
+            i=0
+
+            if not self.in_training:
+                self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+    
+            for data  in tqdm(test_set):
+
+
+                collated_data = collate_multitrack_paired(data)
+
+                x=collated_data['x'].to(self.device)  # x is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+                y=collated_data['y'].to(self.device)  # y is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+                taxonomy=collated_data['taxonomies']  # taxonomy is a list of lists of taxonomies, each list is a track, each taxonomy is a string of 2 digits
+                masks=collated_data['masks'].to(self.device)  # masks is a tensor of shape [B, N] where B is the batch size and N is the number of tracks, it is used to mask the tracks that are not present in the batch
+
+                print("x", x.shape, "y", y.shape, "masks", masks.shape )
+                assert y.shape == x.shape, "sample_y and sample_x must have the same shape"
+
+                B,N, C, T = y.shape
+
+                y = y.to(self.device).float()
+                x = x.to(self.device).float()
+
+    
+                #try:
+                if input_type == "dry" or input_type == "fxnorm_dry":
+                    preds=self.sample_conditional_style_multitrack(mode, x, B=B, N=N,  masks=masks, taxonomy=taxonomy, input_type=input_type, residual=residual)
+                elif input_type == "fxnorm_wet":
+                    preds=self.sample_conditional_style_multitrack(mode, y, B=B,N=N,  masks=masks, taxonomy=taxonomy, input_type=input_type, residual=residual)
+                #except Exception as e:
+                #    print(f"Error during sampling: {e}")
+                #    continue
+
+                    
+                print("preds", preds.shape, "sample_y", y.shape, "sample_x", x.shape)
+                print("preds", preds.std(), "sample_y", y.std(), "sample_x", x.std())
+                #check the l2 norm of the predictions
+                print("L2 norm of predictions:", torch.norm(preds, p=2, dim=(-1)).mean().item())   
+
+                for b in range(B):
+                    indexes=masks[b].nonzero(as_tuple=True)[0]  # Get the indexes of the tracks that are present in the batch
+
+                    dict_y[i] = y[b, indexes].detach().cpu().numpy()  # Store the wet audio for each track
+                    #dict_x[i] = sample_x[b].detach().cpu().numpy()
+                    dict_p_hat[i] = preds[b, indexes].detach().cpu().numpy()
+                    taxonomies = taxonomy[b]  # Get the taxonomy for the current batch
+                    dict_taxonomy[i] = [taxonomies[k] for k in indexes]  # Store the taxonomy for each track that is present in the batch
+
+                    i += 1
+            
+            if self.args.tester.compute_metrics:
+                for metric in self.metrics_dict.keys():
+                    print(f"Computing metric {metric}")
+                    result, result_dict=self.metrics_dict[metric].compute(dict_y, None, None, dict_p_hat=dict_p_hat, dict_cluster=None, dict_taxonomy=dict_taxonomy)
+    
+                    if self.use_wandb:
+                        if result is not None:
+                            self.log_metric(result, metric+"_"+k, step=self.it )
+
+                        for key, value in result_dict.items():
+                            if "figure" in key:
+                                # log figure as an image
+                                self.log_figure(value, key+"_"+k, step=self.it)
+                            else:
+                                self.log_metric(value, key+"_"+k, step=self.it)
+
+                    if not self.in_training:
+                        self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+    def test_conditional_style_multitrack(self, mode, exp_description="", input_type="dry", residual=False):
+
+        for k, test_set in self.test_set_dict.items():
+
+            print(f"Testing on {k} set")
+            k+= "_" + input_type  # Add input type to the key
+
+
+            assert len(test_set) != 0, "No samples found in test set"
+    
+            dict_y = {}
+            #dict_x = {}
+            dict_p_hat = {}
+            dict_taxonomy = {}
+            #dict_p_target = {}
+
+            i=0
+
+            if not self.in_training:
+                self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+    
+            for data  in tqdm(test_set):
+
+
+                collated_data = collate_multitrack_paired(data)
+
+                x=collated_data['x'].to(self.device)  # x is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+                y=collated_data['y'].to(self.device)  # y is a tensor of shape [B, N, C, L] where B is the batch size, N is the number of tracks, C is the number of channels and L is the length of the audio
+                taxonomy=collated_data['taxonomies']  # taxonomy is a list of lists of taxonomies, each list is a track, each taxonomy is a string of 2 digits
+                masks=collated_data['masks'].to(self.device)  # masks is a tensor of shape [B, N] where B is the batch size and N is the number of tracks, it is used to mask the tracks that are not present in the batch
+
+                print("x", x.shape, "y", y.shape, "masks", masks.shape )
+                assert y.shape == x.shape, "sample_y and sample_x must have the same shape"
+
+                B,N, C, T = y.shape
+
+                y = y.to(self.device).float()
+                x = x.to(self.device).float()
+
+    
+                #try:
+                if input_type == "dry" or input_type == "fxnorm_dry":
+                    preds=self.sample_conditional_style_multitrack(mode, x, B=B, N=N,  masks=masks, taxonomy=taxonomy, input_type=input_type, residual=residual)
+                elif input_type == "fxnorm_wet":
+                    preds=self.sample_conditional_style_multitrack(mode, y, B=B,N=N,  masks=masks, taxonomy=taxonomy, input_type=input_type, residual=residual)
+                #except Exception as e:
+                #    print(f"Error during sampling: {e}")
+                #    continue
+
+                    
+                print("preds", preds.shape, "sample_y", y.shape, "sample_x", x.shape)
+                print("preds", preds.std(), "sample_y", y.std(), "sample_x", x.std())
+                #check the l2 norm of the predictions
+                print("L2 norm of predictions:", torch.norm(preds, p=2, dim=(-1)).mean().item())   
+
+                for b in range(B):
+                    indexes=masks[b].nonzero(as_tuple=True)[0]  # Get the indexes of the tracks that are present in the batch
+
+                    dict_y[i] = y[b, indexes].detach().cpu().numpy()  # Store the wet audio for each track
+                    #dict_x[i] = sample_x[b].detach().cpu().numpy()
+                    dict_p_hat[i] = preds[b, indexes].detach().cpu().numpy()
+                    taxonomies = taxonomy[b]  # Get the taxonomy for the current batch
+                    dict_taxonomy[i] = [taxonomies[k] for k in indexes]  # Store the taxonomy for each track that is present in the batch
+
+                    i += 1
+            
+            if self.args.tester.compute_metrics:
+                for metric in self.metrics_dict.keys():
+                    print(f"Computing metric {metric}")
+                    result, result_dict=self.metrics_dict[metric].compute(dict_y, None, None, dict_p_hat=dict_p_hat, dict_cluster=None, dict_taxonomy=dict_taxonomy)
+    
+                    if self.use_wandb:
+                        if result is not None:
+                            self.log_metric(result, metric+"_"+k, step=self.it )
+
+                        for key, value in result_dict.items():
+                            if "figure" in key:
+                                # log figure as an image
+                                self.log_figure(value, key+"_"+k, step=self.it)
+                            else:
+                                self.log_metric(value, key+"_"+k, step=self.it)
+
+                    if not self.in_training:
+                        self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+
+    def test_conditional_style(self, mode, exp_description="", input_type="dry"):
+
+        for k, test_set in self.test_set_dict.items():
+
+            print(f"Testing on {k} set")
+            k+= "_" + input_type  # Add input type to the key
+
+
+            assert len(test_set) != 0, "No samples found in test set"
+    
+            dict_y = {}
+            dict_x = {}
+            dict_p_hat = {}
+            dict_cluster = {}
+            #dict_p_target = {}
+    
+
+            i=0
+
+            if not self.in_training:
+                self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+    
+            for sample_x, cluster  in tqdm(test_set):
+    
+                sample_x=sample_x.to(self.device).float()
+                cluster=cluster.to(self.device)
+                #print("sample_x", sample_x, "sample_y", sample_y)
+                sample_y= self.simulate_effects(sample_x, cluster)
+
+                B, C, T = sample_y.shape
+
+                sample_y = sample_y.to(self.device).float()
+                sample_x = sample_x.to(self.device).float()
+
+                if sample_y.dim()==2:
+                    sample_y = sample_y.unsqueeze(0)
+                if sample_x.dim()==2:
+                    sample_x = sample_x.unsqueeze(0)
+
+    
+                if input_type == "dry" or input_type == "fxnorm_dry":
+                    preds=self.sample_conditional_style(mode, sample_x, B=B, cluster=cluster)
+                elif input_type == "fxnorm_wet":
+                    preds=self.sample_conditional_style(mode, sample_y, B=B, cluster=cluster)
+
+                for b in range(B):
+
+                    dict_y[i] = sample_y[b].detach().cpu().numpy()
+                    dict_x[i] = sample_x[b].detach().cpu().numpy()
+                    dict_p_hat[i] = preds[b].detach().cpu().numpy()
+                    dict_cluster[i] = cluster[b].detach().cpu()
+                    #dict_p_target[i] = p_target[b].detach().cpu().numpy()
+
+                    i += 1
+            
+            if self.args.tester.compute_metrics:
+                for metric in self.metrics_dict.keys():
+                    print(f"Computing metric {metric}")
+                    result, result_dict=self.metrics_dict[metric].compute(dict_y, None, dict_x, dict_p_hat=dict_p_hat, dict_cluster=dict_cluster)
+    
+                    if self.use_wandb:
+                        if result is not None:
+                            self.log_metric(result, metric+"_"+k, step=self.it )
+
+                        for key, value in result_dict.items():
+                            if "figure" in key:
+                                # log figure as an image
+                                self.log_figure(value, key+"_"+k, step=self.it)
+                            else:
+                                self.log_metric(value, key+"_"+k, step=self.it)
+
+                    if not self.in_training:
+                        self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+            
+    def test_conditional(self, mode, exp_description=""):
+
+        self.it = 0
+        for k, test_set in self.test_set_dict.items():
+
+            print(f"Testing on {k} set")
+
+
+            assert len(test_set) != 0, "No samples found in test set"
+    
+            dict_y = {}
+            dict_x = {}
+            dict_y_hat = {}
+    
+
+            i=0
+
+            #if not self.in_training:
+            #    self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+    
+            for sample_y, sample_x  in tqdm(test_set):
+    
+    
+                #print("sample_x", sample_x, "sample_y", sample_y)
+
+                B, C, T = sample_y.shape
+    
+
+                sample_y = sample_y.to(self.device).float()
+                sample_x = sample_x.to(self.device).float()
+
+                if sample_y.dim()==2:
+                    sample_y = sample_y.unsqueeze(0)
+                if sample_x.dim()==2:
+                    sample_x = sample_x.unsqueeze(0)
+    
+                if "baseline" in mode:
+                    if mode== "baseline_dry":
+                        preds=sample_x  # Just return the dry vocals as baseline
+                    elif mode== "baseline_autoencoder":
+                        preds=self.autoencoder_reconstruction(sample_y)  # Just return the dry vocals as baseline
+                    elif mode== "baseline_random":
+                        raise NotImplementedError("Baseline random sampling not implemented yet")
+                        pass
+                else:
+                    preds=self.sample_conditional(mode, sample_x, B=B)
+
+                    is_nan = torch.isnan(preds).any()
+                    if is_nan:
+                        print("NaN values found in predictions")
+                        print("preds", preds.shape, "sample_y", sample_y.shape, "sample_x", sample_x.shape)
+                        print("preds", preds.std(), "sample_y", sample_y.std(), "sample_x", sample_x.std())
+                        #count number of NaN values in sample_x
+                        num_nan = torch.sum(torch.isnan(sample_x)).item()
+                        print(f"Number of NaN values in sample_x: {num_nan} of {sample_x.numel()}")
+
+
+                for b in range(B):
+
+                    if self.use_wandb:
+        
+                        if i < self.args.tester.wandb.num_examples_to_log:  # Log only first 10 samples
+                            self.log_audio(preds[b], f"pred_{k}_{i}", it=self.it)  # Just log first sample
+                            self.log_audio(sample_y[b], f"original_wet_{k}_{i}", it=self.it)  # Just log first sample
+                            self.log_audio(sample_x[b], f"original_dry_{k}_{i}", it=self.it)  # Just log first sample
+                    
+                    dict_y[i] = sample_y[b].detach().cpu().numpy()
+                    dict_x[i] = sample_x[b].detach().cpu().numpy()
+                    dict_y_hat[i] = preds[b].detach().cpu().numpy()
+
+                    i += 1
+                
+            
+            if self.args.tester.compute_metrics:
+                for metric in self.metrics_dict.keys():
+                    try:
+                        print(f"Computing metric {metric}")
+                        result, result_dict=self.metrics_dict[metric].compute(dict_y, dict_y_hat, dict_x)
+        
+                        print("using wandb:", self.use_wandb)
+                        if self.use_wandb:
+                            if result is not None:
+                                print(f"Logging metric {metric} to wandb")
+                                self.log_metric(result, metric+"_"+k, step=self.it )
+    
+                            for key, value in result_dict.items():
+                                print(f"Logging {key} to wandb")
+                                if "figure" in key:
+                                    # log figure as an image
+                                    self.log_figure(value, key+"_"+k, step=self.it)
+                                else:
+                                    self.log_metric(value, key+"_"+k, step=self.it)
+    
+                        #if not self.in_training:
+                        #    self.it+= 1  # Increment iteration for testing, so we can log it in wandb
+                    except Exception as e:
+                        print(f"Error computing metric {metric}: {e}")
+                        continue
+                        
+    def sample_conditional_style_multitrack(self, mode,  cond, B=1, N=3, cluster=None, taxonomy=None, masks=None, input_type="dry", residual=False):
+        # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
+        audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
+        #shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
+        shape=self.sampler.diff_params.default_shape
+        shape= [B, N, *shape[2:]]  # B is the batch size, we want to sample B samples
+
+        print("shape", shape)
+        with torch.no_grad():
+            is_wet= "wet" in input_type
+            if residual:
+                style_emb_cond = self.sampler.diff_params.style_encode(cond, use_adaptor=True if is_wet else False, masks=masks)
+            else:
+                style_emb_cond=None
+
+            if style_emb_cond is not None:
+                cond=(cond, style_emb_cond)  # cond is a tuple of (cond, style_emb_cond) if style_emb_cond is not None, else just cond
+
+            cond, x_preprocessed=self.sampler.diff_params.transform_forward(cond,  is_condition=True, is_test=True, clusters=cluster, taxonomy=taxonomy, masks=masks, is_wet=is_wet)
+            preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device, taxonomy=taxonomy, masks=masks)
+        
+        print("preds", preds.shape, "cond", cond.shape, "x_preprocessed", x_preprocessed.shape)
+
+        return preds
+
+
+    def sample_conditional_style(self, mode,  cond, B=1, cluster=None):
+        # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
+        audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
+        #shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
+        shape=self.sampler.diff_params.default_shape
+        shape= [B, *shape[1:]]  # B is the batch size, we want to sample B samples
+
+        with torch.no_grad():
+            cond, x_preprocessed=self.sampler.diff_params.transform_forward(cond,  is_condition=True, is_test=True, clusters=cluster)
+            preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device)
+
+        return preds
+
+    def autoencoder_reconstruction(self,x):
+
+
+        cond_shape = x.shape
+
+        with torch.no_grad():
+            x=self.sampler.diff_params.transform_forward(x,is_condition=True, is_test=True)
+            preds=self.sampler.diff_params.transform_inverse(x)
+
+        if preds.shape[-1] != cond_shape[-1]:
+            # If the shape of the predictions is not the same as the shape of the condition, we need to pad or truncate
+            if preds.shape[-1] < cond_shape[-1]:
+                # Pad the predictions
+                preds = torch.nn.functional.pad(preds, (0, cond_shape[-1] - preds.shape[-1]))
+            elif preds.shape[-1] > cond_shape[-1]:
+                # Truncate the predictions
+                preds = preds[..., :cond_shape[-1]]
+
+        return preds
+
+    def sample_conditional_multitrack(self, mode, cond, B=1, N=4, input_type="dry"):
+
+        assert input_type=="dry", "only dry input is supported for multitrack sampling"
+
+        #shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
+        cond_shape= cond.shape
+
+        shape=self.sampler.diff_params.default_shape
+        shape=cond.shape
+
+        shape= [B, *shape[1:]]  # B is the batch size, we want to sample B samples
+
+        with torch.no_grad():
+            print("cond shape", cond.shape)
+            print("cond shape", cond.shape)
+            cond=self.sampler.diff_params.transform_forward(cond,normalize=True)
+        
+        preds, noise_init = self.sampler.predict_conditional(cond.shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device)
+
+        if preds.shape[-1] != cond_shape[-1]:
+            # If the shape of the predictions is not the same as the shape of the condition, we need to pad or truncate
+            if preds.shape[-1] < cond_shape[-1]:
+                # Pad the predictions
+                preds = torch.nn.functional.pad(preds, (0, cond_shape[-1] - preds.shape[-1]))
+            elif preds.shape[-1] > cond_shape[-1]:
+                # Truncate the predictions
+                preds = preds[..., :cond_shape[-1]]
+
+        return preds, noise_init
+
+    def sample_conditional(self, mode, cond, B=1):
+        # the audio length is specified in the args.exp, doesnt depend on the tester --> well should probably change that
+        audio_len = self.args.exp.audio_len if not "audio_len" in self.args.tester.unconditional.keys() else self.args.tester.unconditional.audio_len
+        #shape = [self.args.tester.unconditional.num_samples, 2,audio_len]
+        cond_shape= cond.shape
+
+        shape=self.sampler.diff_params.default_shape
+        shape= [B, *shape[1:]]  # B is the batch size, we want to sample B samples
+
+        with torch.no_grad():
+            cond=self.sampler.diff_params.transform_forward(cond,is_condition=True, is_test=True)
+        
+        preds, noise_init = self.sampler.predict_conditional(shape, cond=cond, cfg_scale=self.args.tester.cfg_scale, device=self.device)
+
+        if preds.shape[-1] != cond_shape[-1]:
+            # If the shape of the predictions is not the same as the shape of the condition, we need to pad or truncate
+            if preds.shape[-1] < cond_shape[-1]:
+                # Pad the predictions
+                preds = torch.nn.functional.pad(preds, (0, cond_shape[-1] - preds.shape[-1]))
+            elif preds.shape[-1] > cond_shape[-1]:
+                # Truncate the predictions
+                preds = preds[..., :cond_shape[-1]]
+
+        return preds
+
+            
+
+
+    def prepare_directories(self, mode, unconditional=False, string=None):
+
+        today = date.today()
+        self.paths = {}
+        if "overriden_name" in self.args.tester.keys() and self.args.tester.overriden_name is not None:
+            self.path_sampling = os.path.join(self.args.model_dir, self.args.tester.overriden_name)
+        else:
+            self.path_sampling = os.path.join(self.args.model_dir, 'test' + today.strftime("%d_%m_%Y"))
+        if not os.path.exists(self.path_sampling):
+            os.makedirs(self.path_sampling)
+
+        self.paths[mode] = os.path.join(self.path_sampling, mode, self.args.exp.exp_name)
+
+        if not os.path.exists(self.paths[mode]):
+            os.makedirs(self.paths[mode])
+        if string is None:
+            string = ""
+
+        if not unconditional:
+            self.paths[mode + "wet_original"] = os.path.join(self.paths[mode], string + "wet_original")
+            if not os.path.exists(self.paths[mode + "wet_original"]):
+                os.makedirs(self.paths[mode + "wet_original"])
+            self.paths[mode + "dry"] = os.path.join(self.paths[mode], string + "dry")
+            if not os.path.exists(self.paths[mode + "dry"]):
+                os.makedirs(self.paths[mode + "dry"])
+            self.paths[mode + "emb_estimate"] = os.path.join(self.paths[mode], string + "emb_estimate")
+            if not os.path.exists(self.paths[mode + "emb_estimate"]):
+                os.makedirs(self.paths[mode + "emb_estimate"])
+
+    def save_experiment_args(self, mode):
+        with open(os.path.join(self.paths[mode], ".argv"),
+                  'w') as f:  # Keep track of the arguments we used for this experiment
+            omegaconf.OmegaConf.save(config=self.args, f=f.name)
+
+    def do_test(self, it=0):
+
+        self.it = it
+        #print(self.args.tester.modes)
+        for m in self.args.tester.modes:
+
+            if m == "unconditional":
+                print("testing unconditional")
+                if not self.in_training:
+                    self.prepare_directories(m, unconditional=True)
+                    self.save_experiment_args(m)
+                self.sample_unconditional(m)
+            elif m== "conditional_dry_vocals":
+                print("testing conditional")
+                if not self.in_training:
+                    self.prepare_directories(m, unconditional=False)
+                    self.save_experiment_args(m)
+                self.test_conditional(m)
+            elif m== "conditional_dry_multitrack":
+                print("testing conditional")
+                if not self.in_training:
+                    self.prepare_directories(m, unconditional=False)
+                    self.save_experiment_args(m)
+                self.test_conditional_multitrack(m)
+            elif m=="conditional_dry_multitrack_4instr":
+                print("testing conditional")
+                if not self.in_training:
+                    self.prepare_directories(m, unconditional=False)
+                    self.save_experiment_args(m)
+                self.test_conditional_multitrack_4instr(m)
+            elif m=="benchmark_14":
+                print("testing conditional")
+                if not self.in_training:
+                    self.prepare_directories(m, unconditional=False)
+                    self.save_experiment_args(m)
+                self.test_benchmark_14(m)
+            elif m=="benchmark":
+                print("testing conditional")
+                if not self.in_training:
+                    self.prepare_directories(m, unconditional=False)
+                    self.save_experiment_args(m)
+                self.test_benchmark(m)
+            elif m== "baseline_dry":
+                print("testing baseline dry vocals")
+                if not self.in_training:
+                    self.prepare_directories(m, unconditional=False)
+                    self.save_experiment_args(m)
+                self.test_conditional(m)
+            elif m== "baseline_autoencoder":
+                print("testing autoencoer dry vocals")
+                if not self.in_training:
+                    self.prepare_directories(m, unconditional=False)
+                    self.save_experiment_args(m)
+                self.test_conditional(m)
+            else:
+                print("Warning: unknown mode: ", m)
