@@ -1,6 +1,6 @@
 
 defaults:
-  - dset: TencyDB_multitrack_server5
+  - dset: TencyMastering_multitrack_server217
   - tester: evaluate_styleDiT_fxnorm
   - logging: base_logging_styleDiT
 
