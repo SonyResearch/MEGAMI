@@ -55,9 +55,9 @@ class EDM_Style_Multitrack:
         self.context_signal=context_signal
 
         self.prepare_content_encoder(content_encoder_type, sample_rate, *args, **kwargs)
-        self.prepare_Fxenc(style_encoder_type, *args, **kwargs)
+        self.prepare_style_encoder(style_encoder_type, *args, **kwargs)
 
-    def prepare_cotent_encoder(self, type, sample_rate, *args, **kwargs):
+    def prepare_content_encoder(self, type, sample_rate, *args, **kwargs):
 
         if type=="CLAP":
             CLAP_args= kwargs.get("CLAP_args", None)
@@ -221,7 +221,7 @@ class EDM_Style_Multitrack:
 
         return cin * x_perturbed, target, cnoise
 
-    def loss_fn(self, net,  sample=None,  sample_aug=None, context=None, clusters=None, taxonomy=None, masks=None, compile=False,*args, **kwargs):
+    def loss_fn(self, net,  sample=None,  sample_aug=None, context=None, clusters=None, taxonomy=None, masks=None, *args, **kwargs):
         """
         Loss function, which is the mean squared error between the denoised latent and the clean latent
         Args:
@@ -248,10 +248,10 @@ class EDM_Style_Multitrack:
 
         with torch.no_grad():
             
-            y_style=self.style_encode(y, compile=compile, masks=masks, taxonomy=taxonomy)
+            y_style=self.style_encode(y,  masks=masks, taxonomy=taxonomy)
 
             if context is not None:
-                z, x=self.transform_forward(context, compile=compile, is_condition=True, clusters=clusters, masks=masks, taxonomy=taxonomy, is_wet=(self.context_signal == "wet"))
+                z, x=self.transform_forward(context,  is_condition=True, clusters=clusters, masks=masks, taxonomy=taxonomy, is_wet=(self.context_signal == "wet"))
                 if self.cfg_dropout_prob > 0.0:
                     null_embed = torch.zeros_like(z, device=z.device)
                     #dropout context with probability cfg_dropout_prob
@@ -339,7 +339,7 @@ class EDM_Style_Multitrack:
 
         return x_hat
 
-    def style_encode(self, x, compile=False, masks=None, taxonomy=None, use_adaptor=False):
+    def style_encode(self, x,  masks=None, taxonomy=None, use_adaptor=False):
         """
         Encode the input audio using the style encoder
         Args:
@@ -399,7 +399,13 @@ class EDM_Style_Multitrack:
 
             return x
 
-    def transform_forward(self, x, y=None, compile=False, is_condition=False, is_test=False, clusters=None, masks=None, taxonomy=None, is_wet=False):
+    def Tweedie2score(self, tweedie, xt, t, *args, **kwargs):
+        return (tweedie - self._mean(xt, t)) / self._std(t)**2
+
+    def score2Tweedie(self, score, xt, t, *args, **kwargs):
+        return self._std(t)**2 * score + self._mean(xt, t)
+
+    def transform_forward(self, x, y=None,  is_condition=False, is_test=False, clusters=None, masks=None, taxonomy=None, is_wet=False):
 
         assert masks is not None
 

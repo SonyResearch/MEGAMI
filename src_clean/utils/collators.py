@@ -147,7 +147,7 @@ def collate_multitrack(batch, max_tracks=None, sample_rate=None, segment_length=
             "fs": fs
         }
 
-def collate_multitrack_paired(batch, max_tracks=None):
+def collate_multitrack_paired(batch, max_tracks=None, sample_rate=None, segment_length=None, device=None):
 
         x= [ data_i[0] for data_i in batch ]  # x is a list of tensors, each tensor is a track
         y= [ data_i[1] for data_i in batch ]  # x is a list of tensors, each tensor is a track

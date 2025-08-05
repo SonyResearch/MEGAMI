@@ -12,6 +12,7 @@ import sys
 
 import omegaconf
 import torchaudio
+from utils.feature_extractors.load_features import load_CLAP
 
 # 1-dimensional convolutional layer
 # in the order of conv -> norm -> activation
@@ -260,7 +261,6 @@ class TCNModel(nn.Module):
         self.use_CLAP = use_CLAP
         if self.use_CLAP:
             assert CLAP_args is not None, "CLAP_args must be provided for CLAP AE"
-            from evaluation.feature_extractors import load_CLAP
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             CLAP_encoder= load_CLAP(CLAP_args, device=device)
             cond_dim+= 512
