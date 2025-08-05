@@ -357,3 +357,232 @@ def load_AFxRep(model_args, device, sample_rate=44100, peak_scaling=True, *args,
     return feat_extractor
 
 
+def load_bark_spectrum(model_args,  *args, **kwargs):
+
+    from utils.ITOMaster_loss import compute_barkspectrum
+
+    def wrapper_fn(x):
+
+        
+        B, C, T = x.shape
+
+        bark= compute_barkspectrum(x)
+
+        #print("Bark spectrum shape:", bark.shape)
+
+        return bark.view(B, -1)  # Flatten to shape [1, D]
+
+
+    
+    feat_extractor = lambda x, *args: wrapper_fn(x)
+
+    return feat_extractor
+
+
+import pyloudnorm as pyln
+import librosa
+from evaluation.automix_evaluation import compute_stft, amp_to_db, get_running_stats
+import numpy as np  
+
+def load_spectral_features(model_args, device, *args, **kwargs):
+
+    fft_size= 4096
+    hop_length= 1024
+    sr=44100
+    def wrapper_fn(x, normalization_dict=None):
+        B, C, T = x.shape
+        assert B==1 # Only support batch size of 1 for spectral features
+        x=x[0].T  # Transpose to shape [T, C] for processing
+        x= x.cpu().numpy()
+        x = pyln.normalize.peak(x, -1.0)
+        spec = compute_stft( x, hop_length, fft_size, np.sqrt(np.hanning(fft_size+1)[:-1]))
+        spec = np.transpose(spec, axes=[1, -1, 0])
+        spec = np.abs(spec)
+
+        ct_mean=[]
+        bw_mean=[]
+        sc_mean=[]
+        ro_mean=[]
+        ft_mean=[]
+
+        for c in range(C):
+            s=spec[c]
+            sc = librosa.feature.spectral_centroid(y=None, sr=sr, S=s,
+                             n_fft=fft_size, hop_length=hop_length)
+
+            bw= librosa.feature.spectral_bandwidth(y=None, sr=sr, S=s,
+                             n_fft=fft_size, hop_length=hop_length, centroid=sc, norm=True, p=2)
+        
+            ct = librosa.feature.spectral_contrast(y=None, sr=sr, S=s,
+                                                   n_fft=fft_size, hop_length=hop_length, 
+                                                   fmin=250.0, n_bands=4, quantile=0.02, linear=False)
+            ro = librosa.feature.spectral_rolloff(y=None, sr=sr, S=s,
+                                                  n_fft=fft_size, hop_length=hop_length, 
+                                                  roll_percent=0.85)
+        
+            ft = librosa.feature.spectral_flatness(y=None, S=s,
+                                                   n_fft=fft_size, hop_length=hop_length, 
+                                                   amin=1e-10, power=2.0)
+
+            ft = amp_to_db(ft)
+            ft= (-1 * ft) + 1.0
+        
+            eps = 1e-0
+            N = 40
+            mean_sc, std_sc = get_running_stats(sc.T+eps, [0], N=N)
+            mean_bw, std_bw = get_running_stats(bw.T+eps, [0], N=N)
+            mean_ct, std_ct = get_running_stats(ct.T, list(range(ct.shape[0])), N=N)
+            mean_ro, std_ro = get_running_stats(ro.T+eps, [0], N=N)
+            mean_ft, std_ft = get_running_stats(ft.T+eps, [0], N=N)
+
+            ct_mean.append(mean_ct)
+            bw_mean.append(mean_bw)
+            sc_mean.append(mean_sc)
+            ro_mean.append(mean_ro)
+            ft_mean.append(mean_ft)
+        
+        ct_mean = np.mean(ct_mean)
+        bw_mean = np.mean(bw_mean)
+        sc_mean = np.mean(sc_mean)
+        ro_mean = np.mean(ro_mean)
+        ft_mean = np.mean(ft_mean)
+
+
+        arrays_to_concat = []
+        for arr in [ct_mean, bw_mean, sc_mean, ro_mean, ft_mean]:
+            if np.ndim(arr) == 0:  # If it's a scalar
+                arrays_to_concat.append(np.array([arr]))  # Convert to 1D array
+            else:
+                arrays_to_concat.append(arr)
+
+        features = np.concatenate(arrays_to_concat, axis=0)
+        #features = np.concatenate([ct_mean, bw_mean, sc_mean, ro_mean, ft_mean], axis=0)
+
+        features = torch.tensor(features, device=device).unsqueeze(0)  # Add batch dimension
+
+
+        if normalization_dict is not None:
+            features = (features - normalization_dict['shift']) / normalization_dict['scale']
+
+        return features
+    
+    return wrapper_fn
+
+from evaluation.automix_evaluation import get_rms_dynamic_crest
+def load_dynamic_features(model_args, device, *args, **kwargs):
+    """
+    Load the dynamic features extractor.
+    
+    Args:
+        model_args: Arguments for the dynamic features extractor.
+        device: Device to load the model on (CPU or GPU).
+        
+    Returns:
+        a function that extracts dynamic features from audio.
+    """
+
+    fft_size = 4096
+    hop_length = 1024
+    sr = 44100
+
+    def wrapper_fn(x ):
+        # Assuming x is a tensor of shape [B, C, T]
+        B, C, T = x.shape
+        assert B == 1, "Only batch size of 1 is supported for dynamic features"
+        
+        x = x[0].T  # Transpose to shape [T, C] for processing
+        x = x.cpu().numpy()  # Convert to numpy array
+
+        x= pyln.normalize.peak(x, -1.0)  # Normalize to -1 dB peak
+
+        rms, dyn, crest= get_rms_dynamic_crest(x,  fft_size, hop_length)
+
+        rms=(-1* rms) + 1.0
+        dyn=(-1* dyn) + 1.0
+
+        mean_rms, std_rms = get_running_stats(rms.T, [0], N=40)
+        mean_dyn, std_dyn = get_running_stats(dyn.T, [0], N=40)
+        mean_crest, std_crest = get_running_stats(crest.T, [0], N=40)
+
+
+        mean_rms = np.mean(mean_rms, axis=-1)  # Mean across time frames
+        mean_dyn = np.mean(mean_dyn, axis=-1)  # Mean across time frames
+        mean_crest = np.mean(mean_crest, axis=-1)  # Mean across time frames
+
+        features = np.concatenate([mean_rms, mean_dyn,  mean_crest], axis=0)
+
+        features = torch.tensor(features, device=device).unsqueeze(0)  # Add batch dimension
+
+
+        return features
+    
+    return wrapper_fn
+
+from evaluation.automix_evaluation import get_SPS, get_panning_rms
+
+def load_panning_features(model_args, device, *args, **kwargs):
+    """
+    Load the panning features extractor.
+    
+    Args:
+        model_args: Arguments for the panning features extractor.
+        device: Device to load the model on (CPU or GPU).
+
+    Returns:
+        a function that extracts panning features from audio.
+    """
+
+    fft_size = 4096
+    hop_length = 1024
+    sr = 44100
+
+    def wrapper_fn(x):
+        # Assuming x is a tensor of shape [B, C, T]
+        B, C, T = x.shape
+        assert B == 1, "Only batch size of 1 is supported for panning features"
+        
+        x = x[0].T  # Transpose to shape [T, C] for processing
+        x = x.cpu().numpy()  # Convert to numpy array
+
+        x=pyln.normalize.peak(x, -1.0)  # Normalize to -1 dB peak
+
+        freqs=[[0, sr//2], [0, 250], [250, 2500], [2500, sr//2]]  
+
+        _, _, sps_frames, _ = get_SPS(x, n_fft=fft_size,
+                                  hop_length=hop_length,
+                                  smooth=True, frames=True)
+    
+    
+        p_rms = get_panning_rms(sps_frames,
+                    freqs=freqs,
+                    sr=sr,
+                    n_fft=fft_size)
+
+
+        # to avoid num instability, deletes frames with zero rms from target
+        if np.min(p_rms) == 0.0:
+            id_zeros = np.where(p_rms.T[0] == 0)
+            p_rms_out_ = []
+            for i in range(len(freqs)):
+                temp_out = np.delete(p_rms.T[i], id_zeros)
+                p_rms_out_.append(temp_out)
+            p_rms_out_ = np.asarray(p_rms)
+            p_rms = p_rms_out_.T
+        
+        N = 40 
+
+        mean, std = get_running_stats(p_rms, freqs, N=N)
+        mean= np.mean(mean, axis=-1)  # Mean across time frames
+
+        features= mean
+
+        #features = np.concatenate(mean, axis=0)
+
+        features = torch.tensor(features, device=device).unsqueeze(0)
+
+
+
+        return features
+    
+    return wrapper_fn
+    
