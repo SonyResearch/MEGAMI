@@ -31,6 +31,7 @@ import pandas as pd
 class Evaluator:
     def __init__(self, method="stylediffpipeline", sampling_strategies=["random","centroid_close","centroid_far"] , method_args=None, dataset_code=None, extra_id=None, path_results="/data5/eloi/results", num_tracks_to_load=1):
 
+        sampling_strategies=["random"]
         self.method=method
         self.method_args = method_args
 
@@ -109,10 +110,18 @@ class Evaluator:
             model_dir="/data5/eloi/checkpoints/S9"
             ckpt="1C_tencymastering_vocals-160000.pt"
             #ckpt="1C_tencymastering_vocals-290000.pt"
-        if self.S1_code == "S9v6":
+        elif self.S1_code == "S9v6":
             config_name="conf_S9v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
             model_dir="/data5/eloi/checkpoints/S9v6"
             ckpt="1C_tencymastering_vocals-200000.pt"
+        elif self.S1_code == "S4v6":
+            config_name="conf_S4v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP.yaml"
+            model_dir="/data5/eloi/checkpoints/S4v6"
+            ckpt="1C_tencymastering_vocals-50000.pt"
+        elif self.S1_code == "S3v6":
+            config_name="conf_S3v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP.yaml"
+            model_dir="/data5/eloi/checkpoints/S3v6"
+            ckpt="1C_tencymastering_vocals-50000.pt"
         else:
             raise ValueError(f"Unknown S1_code: {self.S1_code}")
         
@@ -522,7 +531,7 @@ class Evaluator:
                     os.makedirs(f"{path_segment}/anchor_equal_loudness", exist_ok=True)
                     sf.write(f"{path_segment}/anchor_equal_loudness/mix.wav", y_equal_loudness.cpu().clamp(-1,1).numpy().T, 44100, subtype='PCM_16')
             
-                preds=self.generate_Fx(x_dry, 100) 
+                preds=self.generate_Fx(x_dry, 1) 
                 z_pred=self.embedding_post_processing(preds)  # post-process the generated features
 
                 for s in self.sampling_strategies:

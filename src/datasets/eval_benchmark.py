@@ -219,7 +219,7 @@ class Eval_Benchmark(torch.utils.data.Dataset):
                 if self.format == "4instr":
                     dry_path= os.path.join(segment_subdir, "dry_4instr")
                 elif self.format == "all_tracks":
-                    if "MDX" in song_id and (self.mode=="dry-wet-mixture" or self.mode=="dry-mixture"):
+                    if "MDX" in song_id and (self.mode=="dry-wet-mixture" or self.mode=="dry-wet"):
                         dry_path= os.path.join(segment_subdir, "dry_4instr")
                     else:
                         dry_path= os.path.join(segment_subdir, "dry_multi")
