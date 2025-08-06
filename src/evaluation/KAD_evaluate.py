@@ -194,11 +194,11 @@ dataframe= pd.DataFrame(columns=["method"] +list(KAD_metrics.keys()))
 
 filename_results="results_eval/results_KAD"+f"_{set}_308.csv"
 
-methods=[ "fxnorm_automix_S_Lb", "fxnorm_automix_L_Lb",]
+#methods=[ "fxnorm_automix_S_Lb", "fxnorm_automix_L_Lb",]
 #methods=["mst_oracle",  "equal_loudness", "diff_baseline",  "proposed_oracle", "proposed_centroid_close", "proposed_centroid_far", "proposed_random", "only_rms_centroid_close", "only_rms_centroid_far", "only_rms_random" ]
 #methods=["mst_oracle",  "equal_loudness", "diff_baseline",  "proposed_oracle", "proposed_random", "only_rms_random" , "proposed_centroid_close", "proposed_centroid_far", "only_rms_centroid_close", "only_rms_centroid_far"]
 #methods=["cfg2_random", "cfg2_random_only_rms", "cfg1_T100_random", "cfg1_T100_onlyrms", "S3_random", "S3_onlyrms", "S4_random", "S4_onlyrms"]
-#methods=["S3_random", "S3_onlyrms", "S4_random", "S4_onlyrms"]
+methods=["prop_random_indep", "only_rms_indep"]
 #methods=["WUN_4instr", "WUN_14instr", "DMC_14instr"]
 #methods=["WUN_4instr", "WUN_14instr", "DMC_14instr"]
 
@@ -291,6 +291,14 @@ for method in methods:
            def get_pred_file_path(dir):
                pred_mixture= os.path.join(dir,"stylediffpipeline_S4v6_MF3wetv6_MDX_TM_benchmark_cfg_1", "only_rms_random.wav")
                return pred_mixture
+        elif method=="prop_random_indep":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_indep", "random.wav")
+               return pred_mixture
+        elif method=="only_rms_indep":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_indep", "only_rms_random.wav")
+               return pred_mixture
         elif method=="WUN_4instr":
             def get_pred_file_path(dir):
                 pred_mixture= os.path.join(dir,"WUN_4instr", "pred_mixture.wav")
@@ -325,6 +333,7 @@ for method in methods:
                 pred_mixture, fs=load_audio(str(pred_file_path), stereo=True)
                 assert fs==44100, "Expected sampling rate of 44100 Hz"
                 pred_mixture = loudness_normalize(pred_mixture)
+                assert not np.isnan(pred_mixture).any(), f"NaN values found in predicted mixture for {id}"
                 method_dict[id] = pred_mixture
     
     
@@ -334,6 +343,8 @@ for method in methods:
         for feature, metric in KAD_metrics.items():
     
             KAD_distance, dict_output=metric.compute(reference_dict, method_dict, None)
+
+            print(f"KAD distance for method {method} and feature {feature}: {KAD_distance}")
         
             #write the KAD distance to the dataframe
             dataframe.at[method, "method"] = method

@@ -33,7 +33,7 @@ exp:
   rms_normalize_y: True #if True, the target y will be normalized to a fixed RMS value
 
   CLAP_args:
-    ckpt_path: "/data5/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
+    ckpt_path: "/data4/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
     distance_type: "cosine"
     normalize: True #if True, the features will be normalized
     use_adaptor: False #if True, the features will be adapted to the CLAP space
@@ -130,11 +130,11 @@ network:
   use_CLAP: True #if True, the CLAP features will be used as conditioning
 
   CLAP_args:
-    ckpt_path: "/data5/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
+    ckpt_path: "/data4/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt"
     distance_type: "cosine"
     normalize: True #if True, the features will be normalized
     use_adaptor: False #if True, the features will be adapted to the CLAP space
-    adaptor_checkpoint: "/data5/eloi/experiments/CLAP_regressor_sim_multitrack/MLP_CLAP_regressor-5000.pt"
+    adaptor_checkpoint: "/data4/eloi/experiments/CLAP_regressor_sim_multitrack/MLP_CLAP_regressor-5000.pt"
     adaptor_type: "MLP_CLAP_regressor"
     add_noise: False #if True, the features will be augmented with  noise
     noise_sigma: 0.022 #sigma of the  noise to
