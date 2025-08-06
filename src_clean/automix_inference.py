@@ -583,7 +583,7 @@ if __name__ == "__main__":
     method_args= {
         "S1_code": "S9v6",
         "S2_code": "MF3wetv6",
-        "T": 30,
+        "T": 50,
         "Schurn": 5,
         "cfg_scale": 1.0,
     }

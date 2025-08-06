@@ -120,7 +120,7 @@ class MusicMixer():
             self.fx_normalizer= lambda x: x  # identity function if no fx_normalizer is specified
 
 
-    def load_data(self, path_input=None):
+    def load_data(self, path_input=None, to_mono=True):
         ### Loading data ###
 
         if path_input is None:
@@ -145,10 +145,11 @@ class MusicMixer():
             x=torch.from_numpy(x)
 
             #convert to mono if stereo
-            if x.ndim == 2 and x.shape[-1] > 1:
-                x = x.mean(dim=-1, keepdim=True)  # Convert stereo to mono by averaging channels
-            elif x.ndim == 1:
-                x = x.unsqueeze(-1)
+            if to_mono:
+                if x.ndim == 2 and x.shape[-1] > 1:
+                    x = x.mean(dim=-1, keepdim=True)  # Convert stereo to mono by averaging channels
+                elif x.ndim == 1:
+                    x = x.unsqueeze(-1)
             
             x=x.permute(1, 0)  # Change shape to [C, L] where C is the number of channels and L is the length of the audio
 
@@ -271,6 +272,7 @@ class MusicMixer():
             self.sampler.Schurn=Schurn  # Set the Schurn parameter for the sampler
 
             with torch.no_grad():
+                print("x_wet", x_wet.shape)
                 y= self.sampler.diff_params.style_encode(x_wet.unsqueeze(0), masks=masks_fwd_wet)
 
             def fwd_operator(x_hat):
@@ -280,10 +282,17 @@ class MusicMixer():
                 """
                 x_wet=x_hat[:, N:]  # Extract the wet tracks from x
 
-                #cosine distance wrt y
-                cos_dist=1-torch.cosine_similarity(x_wet, y, dim=-1)  # Compute cosine similarity between x_wet and y
 
-                return cos_dist
+
+                #cosine distance wrt y
+                #print("cosine distance wrt y", y.shape, x_wet.shape)
+                #cos_dist=1-torch.cosine_similarity(x_wet.view(-1), y.view(-1), dim=-1)  # Compute cosine similarity between x_wet and y
+
+                #l2 loss wrt y
+                dist= torch.norm(x_wet.view(-1) - y.view(-1), p=2)  # Compute L2 distance between x_wet and y
+
+
+                return dist
                 
 
         
@@ -298,11 +307,11 @@ class MusicMixer():
 
                 cond= torch.cat([cond, cond_wet], dim=1)  # Concatenate the conditions along the track dimension
 
-                preds, noise_init = self.sampler.predict_DPS(shape, cond=cond.contiguous(),  cfg_scale=cfg_scale, device=self.device,  masks=masks_diff, fwd_operator=fwd_operator, zeta=0.5)
+            preds, noise_init = self.sampler.predict_DPS(shape, cond=cond.contiguous(),  cfg_scale=cfg_scale, device=self.device,  masks=masks_diff, fwd_operator=fwd_operator, zeta=0)
         
-            return preds
+            return preds[:, :N ]  # Return only the dry tracks predictions
 
-        self.generate_Fx_wet=lambda x, x_wet, num_samples : generate_Fx_conditional(x, x_wet, input_type="wet", num_samples=num_samples, T=self.method_args.T, cfg_scale=self.method_args.cfg_scale, Schurn=self.method_args.Schurn)
+        self.generate_Fx_conditional=lambda x, x_wet, num_samples : generate_Fx_conditional(x, x_wet, input_type="wet", num_samples=num_samples, T=self.method_args.T, cfg_scale=self.method_args.cfg_scale, Schurn=self.method_args.Schurn)
 
 
 
@@ -501,7 +510,8 @@ class MusicMixer():
 
             """
 
-            x_wet, track_names_wet=self.load_data(path_input=path_wet_sources)
+            x_wet, track_names_wet=self.load_data(path_input=path_wet_sources, to_mono=False)  # Load the wet sources from the specified path
+		
 
             x_dry=self.tracks  # Use the loaded tracks as the input dry audio
             track_names=self.track_names  # Use the loaded track names
@@ -539,10 +549,11 @@ class MusicMixer():
 
             z_pred=self.embedding_post_processing(preds)  # post-process the generated features
 
-            y_final=self.apply_effects(x_dry_original, z_pred[0], batch=False)  # Apply the effects to the input audio
+            y_final=self.apply_effects(x_dry_original, z_pred[0])  # Apply the effects to the input audio
             
 
-            y_hat_mixture=y_final.sum(dim=0, keepdim=False)
+            y_hat_mixture=y_final.sum(dim=0, keepdim=False)+ x_wet.sum(dim=0, keepdim=False)  # Add the wet sources to the final mixture
+
             if y_hat_mixture.abs().max() > 1.0:
                 y_hat_mixture = y_hat_mixture / y_hat_mixture.abs().max()  # Normalize the mixture to [-1, 1] if necessary
 
@@ -550,11 +561,11 @@ class MusicMixer():
             #save all the outputs (every track with its name and the final mixture)
             output_dir = self.path_output
 
-            for i in range(x_dry.shape[0]):
-                track_name = track_names[i]
-                output_path = os.path.join(output_dir, f"{track_name}_dry.wav")
-                sf.write(output_path, x_dry[i].cpu().numpy().T, 44100)
-                print(f"Saved dry track {track_name} to {output_path}")
+            #for i in range(x_dry.shape[0]):
+            #    track_name = track_names[i]
+            #    output_path = os.path.join(output_dir, f"{track_name}_dry.wav")
+            #    sf.write(output_path, x_dry[i].cpu().numpy().T, 44100)
+            #    print(f"Saved dry track {track_name} to {output_path}")
 
             for i in range(y_final.shape[0]):
                 track_name = track_names[i]
@@ -603,7 +614,7 @@ class MusicMixer():
 
             z_pred=self.embedding_post_processing(preds)  # post-process the generated features
 
-            y_final=self.apply_effects(x_dry_original, z_pred[0], batch=False)  # Apply the effects to the input audio
+            y_final=self.apply_effects(x_dry_original, z_pred[0])  # Apply the effects to the input audio
             
 
             y_hat_mixture=y_final.sum(dim=0, keepdim=False)
@@ -717,7 +728,7 @@ if __name__ == "__main__":
     method_args= {
         "S1_code": "S9v6",
         "S2_code": "MF3wetv6",
-        "T": 30,
+        "T": 50,
         "Schurn": 5,
         "cfg_scale": 1.0,
     }
@@ -726,4 +737,4 @@ if __name__ == "__main__":
 
     automixer=MusicMixer(method_args=method_args, path_input="examples/example_conditional/dry_sources", path_output="results/conditional")
 
-    automixer.run_automix_conditional(ref_tracks="examples/example_conditional/wet_sources")
+    automixer.run_automix_conditional("examples/example_conditional/wet_sources")

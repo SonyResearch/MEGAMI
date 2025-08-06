@@ -184,7 +184,7 @@ class SamplerEulerHeun(Sampler):
             grads= x_hat.grad
 
             #lets normalize the grads
-            norm_factor= torch.sqrt(x_hat.view(-1).shape[0])
+            norm_factor= torch.sqrt(torch.tensor(x_hat.view(-1).shape[0])).to(x_hat.device)
             normguide=torch.norm(grads)/ norm_factor
             zeta= zeta/(normguide+1e-8)
             lh_score=-zeta*grads/t_hat
