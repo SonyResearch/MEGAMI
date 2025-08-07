@@ -5,19 +5,19 @@
 
 export HYDRA_FULL_ERROR=1 
 
-source ~/myenv/bin/activate
+source ~/myenv_clean/bin/activate
 
 conf=baseline_STFT_FM.yaml
 
 n="baseline_STFT_FM"
 
 
-PATH_EXPERIMENT=/data2/eloi/experiments_baselines/$n
+PATH_EXPERIMENT=/data5/eloi/experiments_baselines/$n
 
-checkpoint=/data2/eloi/experiments_baselines/baseline_STFT_FM/1A_tencymastering_vocals-370000.pt
+checkpoint=/data5/eloi/experiments_baselines/baseline_STFT_FM/1A_tencymastering_vocals-400000.pt
 
 # Number of GPUs to use
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 NUM_GPUS=1
 MASTER_PORT=29501
 

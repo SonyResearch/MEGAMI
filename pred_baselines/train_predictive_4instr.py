@@ -42,7 +42,14 @@ class Trainer():
         self.device = device
         
         self.optimizer = hydra.utils.instantiate(args.exp.optimizer, params=network.parameters())
-        self.ema = copy.deepcopy(self.network).eval().requires_grad_(False)
+
+        scheduler_step_size= self.args.exp.scheduler_step_size
+        scheduler_gamma= self.args.exp.scheduler_gamma
+
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=scheduler_step_size, gamma=scheduler_gamma)
+
+
+        #self.ema = copy.deepcopy(self.network).eval().requires_grad_(False)
 
         # Torch settings
         torch.manual_seed(self.args.exp.seed)
@@ -146,7 +153,7 @@ class Trainer():
             self.args.model_dir) + "_" + self.args.exp.exp_name + "_" + self.wandb_run.id  # adding the experiment number to the run name, bery important, I hope this does not crash
 
     def load_state_dict(self, state_dict):
-        return t_utils.load_state_dict(state_dict, network=self.network, ema=self.ema, optimizer=self.optimizer)
+        return t_utils.load_state_dict(state_dict, network=self.network, ema=self.network, optimizer=self.optimizer)
 
     def resume_from_checkpoint(self, checkpoint_path=None, checkpoint_id=None):
         # Resume training from latest checkpoint available in the output director
@@ -215,7 +222,7 @@ class Trainer():
                     'it': self.it,
                     'network': self.network.state_dict(),
                     'optimizer': self.optimizer.state_dict(),
-                    'ema': self.ema.state_dict(),
+                    'ema': self.network.state_dict(),
                     'args': self.args,
                 }
 
@@ -304,6 +311,9 @@ class Trainer():
         y_pred,_=self.network(x, masks)
 
         print("y_pred shape", y_pred.shape, "y shape", y.shape)
+        y=y[..., 34:-34]  # remove the first and last 34 samples to match the output length, this is because of the padding in the convolutional layers
+        print("y_pred shape after slicing", y_pred.shape, "y shape after slicing", y.shape)
+        
         loss_dictionary=self.loss_fn(y_pred, y)
 
         loss=0
@@ -325,6 +335,7 @@ class Trainer():
 
             # Update weights.
             self.optimizer.step()
+            self.scheduler.step()  # Step the scheduler
 
             print("iteration", self.it,"loss", loss.item(),  "time", time.time() - a)
 
@@ -433,6 +444,9 @@ class Trainer():
                 print("x shape", x.shape)
                 y_pred,_=self.network(x, masks)
 
+                y=y[..., 34:-34]  # remove the first and last 34 samples to match the output length, this is because of the padding in the convolutional layers
+                print("y_pred shape after slicing", y_pred.shape, "y shape after slicing", y.shape)
+
                 loss_dictionary=self.loss_fn(y_pred, y)
 
                 val_loss+=loss_dictionary['loss_sd'].mean().item()  # Take the mean of the loss across the batch
@@ -477,14 +491,14 @@ class Trainer():
         while True:
             #try:
             a= time.time()
-            try:
-                self.train_step()
-            except Exception as e:
-                print("Error during training step, skipping this step")
-                print(e)
-                continue
+            #try:
+            self.train_step()
+            #except Exception as e:
+            #    print("Error during training step, skipping this step")
+            #    print(e)
+            #    continue
 
-            self.update_ema()
+            #self.update_ema()
 
 
             if self.it > 0 and self.it % self.args.logging.save_interval == 0 and self.args.logging.save_model:

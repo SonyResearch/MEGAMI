@@ -17,7 +17,7 @@ from evaluation.dist_metrics import KADFeatures
 # see device 1
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-path_test_set="/data4/eloi/test_set/MDX_TM_benchmark"
+path_test_set="/data5/eloi/test_set/MDX_TM_benchmark"
 
 set="MDX_TM"
 
@@ -38,8 +38,6 @@ features=[
     "FxEncoder++",
     "CLAP",
     "bark",
-    "spectral",
-    "panning",
     "dynamic",
 ]
 
@@ -49,8 +47,8 @@ features=[
 KAD_metrics={}
 
 KAD_args = { 
-  "do_PCA_figure": True, #if True, the FAD figure will be computed
-  "do_TSNE_figure": True, #if True, the FAD figure will be computed
+  "do_PCA_figure": False, #if True, the FAD figure will be computed
+  "do_TSNE_figure": False, #if True, the FAD figure will be computed
   "kernel": "gaussian", #kernel to use for the KAD metric
    "PCA_fit_mode": "all"
 }
@@ -82,7 +80,7 @@ for feature in features:
 
     elif feature=="CLAP":
         clap_args = {
-            "ckpt_path": "/home/eloi/projects/project_mfm_eloi/src_clean/checkpoints/music_audioset_epoch_15_esc_90.14.patched.pt",
+            "ckpt_path": "/data5/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt",
             "distance_type": "cosine",
             "normalize": True,  # if True, the features will be normalized
             "use_adaptor": False,  # if True, the features will be adapted to the CLAP space
@@ -192,14 +190,17 @@ for song_dir in song_dirs:
 # create dataframe colums are features, rows are methods
 dataframe= pd.DataFrame(columns=["method"] +list(KAD_metrics.keys()))
 
-filename_results="results_eval/results_KAD"+f"_{set}_308.csv"
+filename_results="results_eval/results_KAD"+f"_{set}_708_2.csv"
 
 #methods=[ "fxnorm_automix_S_Lb", "fxnorm_automix_L_Lb",]
+#methods=[ "proposed_random_churn","S3_random_churn", "S4_random_churn", "only_rms_S4_random_churn",  "only_rms_random_churn" ]
 #methods=["mst_oracle",  "equal_loudness", "diff_baseline",  "proposed_oracle", "proposed_centroid_close", "proposed_centroid_far", "proposed_random", "only_rms_centroid_close", "only_rms_centroid_far", "only_rms_random" ]
+methods=[ "proposed_random", "only_rms_random" ]
 #methods=["mst_oracle",  "equal_loudness", "diff_baseline",  "proposed_oracle", "proposed_random", "only_rms_random" , "proposed_centroid_close", "proposed_centroid_far", "only_rms_centroid_close", "only_rms_centroid_far"]
 #methods=["cfg2_random", "cfg2_random_only_rms", "cfg1_T100_random", "cfg1_T100_onlyrms", "S3_random", "S3_onlyrms", "S4_random", "S4_onlyrms"]
-methods=["prop_random_indep", "only_rms_indep"]
-#methods=["WUN_4instr", "WUN_14instr", "DMC_14instr"]
+#methods=["prop_random_indep", "only_rms_indep"]
+#methods=["WUN_4instr"]
+#methods=["diff_baseline"]
 #methods=["WUN_4instr", "WUN_14instr", "DMC_14instr"]
 
 
@@ -245,7 +246,11 @@ for method in methods:
                return pred_mixture
         elif method=="proposed_random":
            def get_pred_file_path(dir):
-               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1", "random.wav")
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30", "random.wav")
+               return pred_mixture
+        elif method=="proposed_random_churn":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T50_churn5", "random.wav")
                return pred_mixture
         elif method=="only_rms_centroid_close":
            def get_pred_file_path(dir):
@@ -257,7 +262,11 @@ for method in methods:
                return pred_mixture
         elif method=="only_rms_random":
            def get_pred_file_path(dir):
-               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1", "only_rms_random.wav")
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30", "only_rms_random.wav")
+               return pred_mixture
+        elif method=="only_rms_random_churn":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T50_churn5", "only_rms_random.wav")
                return pred_mixture
         elif method=="cfg2_random":
            def get_pred_file_path(dir):
@@ -279,13 +288,21 @@ for method in methods:
            def get_pred_file_path(dir):
                pred_mixture= os.path.join(dir,"stylediffpipeline_S3v6_MF3wetv6_MDX_TM_benchmark_cfg_1", "random.wav")
                return pred_mixture
+        elif method=="S3_random_churn":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S3v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T50_churn5", "random.wav")
+               return pred_mixture
         elif method=="S3_onlyrms":
            def get_pred_file_path(dir):
                pred_mixture= os.path.join(dir,"stylediffpipeline_S3v6_MF3wetv6_MDX_TM_benchmark_cfg_1", "only_rms_random.wav")
                return pred_mixture
-        elif method=="S4_random":
+        elif method=="S4_random_churn":
            def get_pred_file_path(dir):
-               pred_mixture= os.path.join(dir,"stylediffpipeline_S4v6_MF3wetv6_MDX_TM_benchmark_cfg_1", "random.wav")
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S4v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T50_churn5", "random.wav")
+               return pred_mixture
+        elif method=="only_rms_S4_random_churn":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S4v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T50_churn5", "only_rms_random.wav")
                return pred_mixture
         elif method=="S4_onlyrms":
            def get_pred_file_path(dir):

@@ -289,7 +289,7 @@ class Tester():
                 #assert y.shape[2]==2, "sample_y must have 2 channels, but got {}".format(y.shape[2])
 
                 x_norm= x.view(x.shape[0] * x.shape[1], 1, x.shape[2])  # reshape to [B*N, 1, L]
-                x_norm=apply_RMS_normalization(x_norm, use_gate=self.args.exp.use_gated_RMSnorm)
+                x_norm=apply_RMS_normalization(x_norm, use_gate=self.args.exp.use_gated_RMSnorm, threshold_dB=-70.0)
                 x=x_norm.view(x.shape[0], x.shape[1], x.shape[2])  # reshape back to [B, N, L]
 
 
@@ -297,11 +297,15 @@ class Tester():
                 original_length = x.shape[-1]
                 if x.shape[-1] % 4096 != 0:
                     x = torch.nn.functional.pad(x, (0, 4096 - x.shape[-1] % 4096), mode='constant', value=0)
+                
+                if x.shape[-1] < 529152:  # If the length is less than 529152, we pad it to 529152
+                    x = torch.nn.functional.pad(x, (0, 529152 - x.shape[-1]), mode='constant', value=0)
 
                 #print("x", x.shape)
                 #print("x", x.std())
                 preds,_=self.network(x, masks)
                 #print(preds.shape, preds.std())
+                preds=preds[..., 34:-34]  # remove the first and last 34 samples, this is to match the length of the input audio, we assume that the model was trained with this padding
 
                 preds=preds[..., :original_length]  # remove the padding
 
@@ -313,6 +317,7 @@ class Tester():
                 pred= preds[0].detach().cpu().numpy()
                 #peak normalize
                 peak= np.max(np.abs(pred))
+                print("Peak :", peak)
 
                 #print(peak.shape)
 
