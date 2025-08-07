@@ -11,7 +11,7 @@ test:
   format: "all_tracks"
   mode: "dry-only"
 
-  path: /data4/eloi/test_set/MDX_TM_benchmark
+  path: /data4/eloi/test_set/audio_material_longer
 
   RMS_threshold_dB: -60.0
  

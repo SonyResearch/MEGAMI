@@ -19,9 +19,13 @@ from utils.feature_extractors.dsp_features import compute_log_rms_gated_max, com
 
 
 
-
 class MusicMixer():
-    def __init__(self, method_args=None, path_input=None,  path_output=None):
+    def __init__(self, method_args=None, path_input=None,  path_output=None, seed=42):
+
+        #appy torch random seed
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed(seed)
+
 
         self.method_args = method_args
 
@@ -54,6 +58,14 @@ class MusicMixer():
             config_name="conf_FxGenerator_TencyDB.yaml"
             model_dir="checkpoints"
             ckpt="S9v6_1C_tencymastering_vocals-200000.pt"
+        elif self.S1_code == "S3v6":
+            config_name="conf_FxGenerator_TencyDB.yaml"
+            model_dir="checkpoints"
+            ckpt="S3v6_1C_tencymastering_vocals-50000.pt"
+        elif self.S1_code == "S4v6":
+            config_name="conf_FxGenerator_TencyDB.yaml"
+            model_dir="checkpoints"
+            ckpt="S4v6_1C_tencymastering_vocals-50000.pt"
         else:
             raise ValueError(f"Unknown S1_code: {self.S1_code}")
         
@@ -356,9 +368,12 @@ class MusicMixer():
                 x_filtered = torch.nn.functional.pad(x_filtered, (pad_size, pad_size), mode='reflect')  # Pad with the last value to avoid edge effects
 
 
+                torch.cuda.empty_cache()
 
                 with torch.no_grad():
                     y_hat_i=self.fx_model(x_filtered, z_pred[i:i+1])
+
+                torch.cuda.empty_cache()
 
                 y_hat_i=y_hat_i[:, :, pad_size:-pad_size]  # Remove the padding
 
@@ -470,8 +485,9 @@ class MusicMixer():
             preds=self.generate_Fx(x_dry, 1) 
 
             z_pred=self.embedding_post_processing(preds)  # post-process the generated features
+            del self.sampler
 
-            y_final=self.apply_effects(x_dry_original, z_pred[0], batch=False)  # Apply the effects to the input audio
+            y_final=self.apply_effects(x_dry_original, z_pred[0])  # Apply the effects to the input audio
             
 
             y_hat_mixture=y_final.sum(dim=0, keepdim=False)
@@ -482,24 +498,24 @@ class MusicMixer():
             #save all the outputs (every track with its name and the final mixture)
             output_dir = self.path_output
 
-            for i in range(x_dry.shape[0]):
-                track_name = track_names[i]
-                output_path = os.path.join(output_dir, f"{track_name}_dry.wav")
-                sf.write(output_path, x_dry[i].cpu().numpy().T, 44100)
-                print(f"Saved dry track {track_name} to {output_path}")
+            #for i in range(x_dry.shape[0]):
+            #    track_name = track_names[i]
+            #    output_path = os.path.join(output_dir, f"{track_name}_dry.wav")
+            #    sf.write(output_path, x_dry[i].cpu().numpy().T, 44100)
+            #    print(f"Saved dry track {track_name} to {output_path}")
 
-            for i in range(y_final.shape[0]):
-                track_name = track_names[i]
-                output_path = os.path.join(output_dir, f"{track_name}_processed.wav")
-                sf.write(output_path, y_final[i].cpu().numpy().T, 44100)
-                print(f"Saved processed track {track_name} to {output_path}")
+            #for i in range(y_final.shape[0]):
+            #    track_name = track_names[i]
+            #    output_path = os.path.join(output_dir, f"{track_name}_processed.wav")
+            #    sf.write(output_path, y_final[i].cpu().numpy().T, 44100)
+            #    print(f"Saved processed track {track_name} to {output_path}")
 
             #save the final mixture
             mixture_output_path = os.path.join(output_dir, "mixture_processed.wav")
             sf.write(mixture_output_path, y_hat_mixture.cpu().numpy().T, 44100)
             print(f"Saved final mixture to {mixture_output_path}")
 
-    def run_automix_full_track(self):
+    def run_automix_full_track(self, n_examples=1):
 
             """
 
@@ -546,32 +562,36 @@ class MusicMixer():
             x_dry=x_dry.to(self.device)
 
 
-            preds=self.generate_Fx(x_dry, 1) 
+            preds=self.generate_Fx(x_dry, n_examples) 
 
             z_pred=self.embedding_post_processing(preds)  # post-process the generated features
 
-            y_final=self.apply_effects_full_track(x_dry_original, z_pred[0] )  # Apply the effects to the input audio
-            print("y_final shape:", y_final.shape)
+            del self.sampler 
 
-            y_hat_mixture=y_final.sum(dim=0, keepdim=False)
-            if y_hat_mixture.abs().max() > 1.0:
-                y_hat_mixture = y_hat_mixture / y_hat_mixture.abs().max()  # Normalize the mixture to [-1, 1] if necessary
+            for i in range(n_examples):
 
-
-            #save all the outputs (every track with its name and the final mixture)
-            output_dir = self.path_output
-
-
-            for i in range(y_final.shape[0]):
-                track_name = track_names[i]
-                output_path = os.path.join(output_dir, f"{track_name}_processed.wav")
-                sf.write(output_path, y_final[i].cpu().numpy().T, 44100)
-                print(f"Saved processed track {track_name} to {output_path}")
-
-            #save the final mixture
-            mixture_output_path = os.path.join(output_dir, "mixture_processed.wav")
-            sf.write(mixture_output_path, y_hat_mixture.cpu().numpy().T, 44100)
-            print(f"Saved final mixture to {mixture_output_path}")
+                y_final=self.apply_effects_full_track(x_dry_original, z_pred[i] )  # Apply the effects to the input audio
+                print("y_final shape:", y_final.shape)
+    
+                y_hat_mixture=y_final.sum(dim=0, keepdim=False)
+                if y_hat_mixture.abs().max() > 1.0:
+                    y_hat_mixture = y_hat_mixture / y_hat_mixture.abs().max()  # Normalize the mixture to [-1, 1] if necessary
+    
+    
+                #save all the outputs (every track with its name and the final mixture)
+                output_dir = self.path_output
+    
+    
+                #for i in range(y_final.shape[0]):
+                #    track_name = track_names[i]
+                #    output_path = os.path.join(output_dir, f"{track_name}_processed.wav")
+                #    sf.write(output_path, y_final[i].cpu().numpy().T, 44100)
+                #    print(f"Saved processed track {track_name} to {output_path}")
+    
+                #save the final mixture
+                mixture_output_path = os.path.join(output_dir, "mixture_processed"+f"_{i}.wav")
+                sf.write(mixture_output_path, y_hat_mixture.cpu().numpy().T, 44100)
+                print(f"Saved final mixture to {mixture_output_path}")
 
 
 
@@ -583,13 +603,234 @@ if __name__ == "__main__":
     method_args= {
         "S1_code": "S9v6",
         "S2_code": "MF3wetv6",
-        "T": 50,
+        "T": 30,
         "Schurn": 5,
-        "cfg_scale": 1.0,
+        "cfg_scale": 1.5,
     }
 
     method_args=omegaconf.OmegaConf.create(method_args)
 
-    automixer=MusicMixer(method_args=method_args, path_input="examples/full_song", path_output="results/full_song")
 
+    main_path="/data4/eloi/test_set/audio_material_12s/"
+    model_name="ours_internal_large"
+
+	
+    os.makedirs(main_path+"018/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"018/dry_multi", path_output=main_path+"018/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"006/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"006/dry_multi", path_output=main_path+"006/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"008/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"008/dry_multi", path_output=main_path+"008/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"MusicDelta_Britpop/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Britpop/dry_multi", path_output=main_path+"MusicDelta_Britpop/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"MusicDelta_Country1/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Country1/dry_multi", path_output=main_path+"MusicDelta_Country1/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"MusicDelta_Disco/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Disco/dry_multi", path_output=main_path+"MusicDelta_Disco/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"MusicDelta_Grunge/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Grunge/dry_multi", path_output=main_path+"MusicDelta_Grunge/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+
+
+    main_path="/data4/eloi/test_set/audio_material_longer/"
+    model_name="ours_internal_large"
+
+	
+    os.makedirs(main_path+"018/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"018/dry_multi", path_output=main_path+"018/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"006/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"006/dry_multi", path_output=main_path+"006/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"008/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"008/dry_multi", path_output=main_path+"008/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Britpop/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Britpop/dry_multi", path_output=main_path+"MusicDelta_Britpop/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Country1/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Country1/dry_multi", path_output=main_path+"MusicDelta_Country1/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Disco/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Disco/dry_multi", path_output=main_path+"MusicDelta_Disco/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Grunge/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Grunge/dry_multi", path_output=main_path+"MusicDelta_Grunge/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+
+
+    method_args= {
+        "S1_code": "S4v6",
+        "S2_code": "MF3wetv6",
+        "T": 30,
+        "Schurn": 5,
+        "cfg_scale": 1.5,
+    }
+
+    method_args=omegaconf.OmegaConf.create(method_args)
+
+
+    main_path="/data4/eloi/test_set/audio_material_12s/"
+    model_name="ours_internal_small"
+
+	
+    os.makedirs(main_path+"018/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"018/dry_multi", path_output=main_path+"018/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)  
+
+    os.makedirs(main_path+"006/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"006/dry_multi", path_output=main_path+"006/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"008/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"008/dry_multi", path_output=main_path+"008/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"MusicDelta_Britpop/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Britpop/dry_multi", path_output=main_path+"MusicDelta_Britpop/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"MusicDelta_Country1/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Country1/dry_multi", path_output=main_path+"MusicDelta_Country1/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"MusicDelta_Disco/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Disco/dry_multi", path_output=main_path+"MusicDelta_Disco/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"MusicDelta_Grunge/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Grunge/dry_multi", path_output=main_path+"MusicDelta_Grunge/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+
+
+    main_path="/data4/eloi/test_set/audio_material_longer/"
+    model_name="ours_internal_small"
+
+	
+    os.makedirs(main_path+"018/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"018/dry_multi", path_output=main_path+"018/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"006/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"006/dry_multi", path_output=main_path+"006/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"008/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"008/dry_multi", path_output=main_path+"008/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Britpop/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Britpop/dry_multi", path_output=main_path+"MusicDelta_Britpop/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Country1/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Country1/dry_multi", path_output=main_path+"MusicDelta_Country1/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Disco/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Disco/dry_multi", path_output=main_path+"MusicDelta_Disco/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Grunge/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Grunge/dry_multi", path_output=main_path+"MusicDelta_Grunge/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+
+
+
+    method_args= {
+        "S1_code": "S3v6",
+        "S2_code": "MF3wetv6",
+        "T": 30,
+        "Schurn": 5,
+        "cfg_scale": 1.5,
+    }
+
+    method_args=omegaconf.OmegaConf.create(method_args)
+
+
+    main_path="/data4/eloi/test_set/audio_material_12s/"
+    model_name="ours_internal_paired"
+
+	
+    os.makedirs(main_path+"018/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"018/dry_multi", path_output=main_path+"018/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"006/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"006/dry_multi", path_output=main_path+"006/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"008/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"008/dry_multi", path_output=main_path+"008/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"MusicDelta_Britpop/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Britpop/dry_multi", path_output=main_path+"MusicDelta_Britpop/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Country1/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Country1/dry_multi", path_output=main_path+"MusicDelta_Country1/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"MusicDelta_Disco/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Disco/dry_multi", path_output=main_path+"MusicDelta_Disco/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+    os.makedirs(main_path+"MusicDelta_Grunge/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Grunge/dry_multi", path_output=main_path+"MusicDelta_Grunge/"+model_name, seed=1)
+    automixer.run_automix_full_track(n_examples=4)
+
+
+    main_path="/data4/eloi/test_set/audio_material_longer/"
+    model_name="ours_internal_paired"
+
+	
+    os.makedirs(main_path+"018/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"018/dry_multi", path_output=main_path+"018/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"006/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"006/dry_multi", path_output=main_path+"006/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"008/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"008/dry_multi", path_output=main_path+"008/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Britpop/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Britpop/dry_multi", path_output=main_path+"MusicDelta_Britpop/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Country1/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Country1/dry_multi", path_output=main_path+"MusicDelta_Country1/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Disco/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Disco/dry_multi", path_output=main_path+"MusicDelta_Disco/"+model_name, seed=1)
+    automixer.run_automix_full_track()
+
+    os.makedirs(main_path+"MusicDelta_Grunge/"+model_name, exist_ok=True)
+    automixer=MusicMixer(method_args=method_args, path_input=main_path+"MusicDelta_Grunge/dry_multi", path_output=main_path+"MusicDelta_Grunge/"+model_name, seed=1)
     automixer.run_automix_full_track()
