@@ -242,6 +242,12 @@ class Eval_Benchmark(torch.utils.data.Dataset):
 
                     x_wet_tracks=[]
 
+                if format == "4instr":
+                    #sort dry_files by track name ["vocals", "drums", "bass", "other"]
+                    #instr_names = ["vocals.wav", "drums.wav", "bass.wav", "other.wav"]
+
+                    instr_names = ["vocals.wav", "bass.wav","drums.wav", "other.wav"]
+                    dry_files = sorted(dry_files, key=lambda x: instr_names.index(os.path.basename(x)))
 
                 for f in dry_files:
                     out=load_audio(str(f), stereo=True)

@@ -190,15 +190,17 @@ for song_dir in song_dirs:
 # create dataframe colums are features, rows are methods
 dataframe= pd.DataFrame(columns=["method"] +list(KAD_metrics.keys()))
 
-filename_results="results_eval/results_KAD"+f"_{set}_308.csv"
+filename_results="results_eval/results_KAD"+f"_{set}_708_2.csv"
 
 #methods=[ "fxnorm_automix_S_Lb", "fxnorm_automix_L_Lb",]
-methods=[ "proposed_random_churn","S3_random_churn", "S4_random_churn", "only_rms_S4_random_churn",  "only_rms_random_churn" ]
+#methods=[ "proposed_random_churn","S3_random_churn", "S4_random_churn", "only_rms_S4_random_churn",  "only_rms_random_churn" ]
 #methods=["mst_oracle",  "equal_loudness", "diff_baseline",  "proposed_oracle", "proposed_centroid_close", "proposed_centroid_far", "proposed_random", "only_rms_centroid_close", "only_rms_centroid_far", "only_rms_random" ]
+methods=[ "proposed_random", "only_rms_random" ]
 #methods=["mst_oracle",  "equal_loudness", "diff_baseline",  "proposed_oracle", "proposed_random", "only_rms_random" , "proposed_centroid_close", "proposed_centroid_far", "only_rms_centroid_close", "only_rms_centroid_far"]
 #methods=["cfg2_random", "cfg2_random_only_rms", "cfg1_T100_random", "cfg1_T100_onlyrms", "S3_random", "S3_onlyrms", "S4_random", "S4_onlyrms"]
 #methods=["prop_random_indep", "only_rms_indep"]
-#methods=["WUN_4instr", "WUN_14instr", "DMC_14instr"]
+#methods=["WUN_4instr"]
+#methods=["diff_baseline"]
 #methods=["WUN_4instr", "WUN_14instr", "DMC_14instr"]
 
 
@@ -244,7 +246,7 @@ for method in methods:
                return pred_mixture
         elif method=="proposed_random":
            def get_pred_file_path(dir):
-               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1", "random.wav")
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30", "random.wav")
                return pred_mixture
         elif method=="proposed_random_churn":
            def get_pred_file_path(dir):
@@ -260,7 +262,7 @@ for method in methods:
                return pred_mixture
         elif method=="only_rms_random":
            def get_pred_file_path(dir):
-               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1", "only_rms_random.wav")
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30", "only_rms_random.wav")
                return pred_mixture
         elif method=="only_rms_random_churn":
            def get_pred_file_path(dir):

@@ -25,6 +25,6 @@ stft:
   compression_alpha: 0.5
   compression_beta: 0.15
   N_pad_spec: 64
-  audio_len: 262144
+  audio_len: 525312
 
 default_shape: [1,4, 4,  768, 704]

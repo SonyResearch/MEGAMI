@@ -113,6 +113,7 @@ class FM_STFT(SDE):
 
             sig= torch.istft(spec, **{**self.stft_kwargs, "window": window}, length=length)
             sig=einops.rearrange(sig, "(b n c) t -> b n c t", b=B, n=N, c=C)
+            #return sig[..., :length]
             return sig[..., :length]
 
         self.stft_fwd=lambda x: stft_func(x, window=window)
