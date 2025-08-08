@@ -12,9 +12,10 @@ conf=baseline_STFT_FM.yaml
 n="baseline_STFT_FM"
 
 
-PATH_EXPERIMENT=/data5/eloi/experiments_baselines/$n
+PATH_EXPERIMENT=/data4/eloi/experiments_baselines/$n
 
-checkpoint=/data5/eloi/experiments_baselines/baseline_STFT_FM/1A_tencymastering_vocals-400000.pt
+#checkpoint=/data5/eloi/experiments_baselines/baseline_STFT_FM/1A_tencymastering_vocals-400000.pt
+checkpoint=/home/eloi/projects/project_mfm_eloi/diff_baseline/checkpoints/baseline_STFT_FM/1A_tencymastering_vocals-400000.pt
 
 # Number of GPUs to use
 export CUDA_VISIBLE_DEVICES=1
@@ -27,7 +28,7 @@ python test_paired_4instr_multitrack_STFTrefiner.py --config-name=$conf  \
   exp.compile=False \
   tester.checkpoint=$checkpoint \
   tester=eval_benchmark \
-  dset=test_benchmark
+  dset=test_benchmark_lt
 
 
 

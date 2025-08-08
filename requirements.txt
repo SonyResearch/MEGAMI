@@ -16,8 +16,10 @@ arrow==1.3.0
 asttokens==3.0.0
 async-lru==2.0.5
 attrs==25.3.0
+aubio==0.4.9
 audioread==3.0.1
 auraloss==0.4.0
+-e git+https://github.com/csteinmetz1/automix-toolkit.git@e71ce5df3a808bfa102418b0e0144c8ff136fe2e#egg=automix_toolkit
 babel==2.17.0
 beautifulsoup4==4.13.4
 bleach==6.2.0
@@ -67,6 +69,7 @@ gitdb==4.0.12
 GitPython==3.1.44
 gradio==5.30.0
 gradio_client==1.10.1
+graphviz==0.20.3
 groovy==0.1.2
 grpcio==1.71.0
 h11==0.16.0
@@ -109,6 +112,7 @@ kiwisolver==1.4.8
 kornia==0.8.1
 kornia_rs==0.1.9
 laion-clap==1.1.4
+lameenc==1.8.1
 lazy_loader==0.4
 librosa==0.11.0
 lightning-utilities==0.14.3
@@ -125,6 +129,8 @@ mistune==3.1.3
 mpmath==1.3.0
 msgpack==1.1.0
 multidict==6.4.4
+music2latent==0.1.6
+-e git+https://github.com/SonyCSLParis/music2latent4@c7135d7e90f14c886724611197718a69a59b4091#egg=music2latent4
 narwhals==1.40.0
 nbclient==0.10.2
 nbconvert==7.16.6
@@ -134,7 +140,7 @@ networkx==3.3
 notebook==7.4.2
 notebook_shim==0.2.4
 numba==0.61.2
-numpy==2.2.6
+numpy==1.26.0
 nvidia-cublas-cu11==11.11.3.6
 nvidia-cuda-cupti-cu11==11.8.87
 nvidia-cuda-nvrtc-cu11==11.8.89
@@ -175,6 +181,7 @@ pydantic_core==2.33.2
 pydub==0.25.1
 Pygments==2.19.1
 pyloudnorm==0.1.1
+pymixconsole @ git+https://github.com/csteinmetz1/pymixconsole@49d86aeddfdd0b59c18830b02f63c98f721caf9d
 pynndescent==0.5.13
 pyparsing==3.2.3
 pystoi==0.4.1
@@ -212,7 +219,9 @@ smmap==5.0.2
 sniffio==1.3.1
 soundfile==0.13.1
 soupsieve==2.7
+sox==1.5.0
 soxr==0.5.0.post1
+-e git+ssh://git@github.com/csteinmetz1/st-ito.git@c34463a4bc94dcafe793c634cd9972768f0234dd#egg=st_ito
 stable-audio-tools==0.0.19
 stack-data==0.6.3
 starlette==0.46.2
@@ -228,10 +237,13 @@ tinycss2==1.4.0
 tokenizers==0.21.1
 tomlkit==0.13.2
 torch==2.7.0+cu118
+torch-fftconv==0.1.3
 torch-stoi==0.2.3
 torchaudio==2.7.0+cu118
+torchcomp==0.2.1
 torchdiffeq==0.2.5
 torchlibrosa==0.1.0
+torchlpc==0.6
 torchmetrics==0.11.4
 torchsde==0.2.6
 torchvision==0.22.0+cu118

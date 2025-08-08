@@ -6,7 +6,7 @@ defaults:
   - tester: conditional_dry_multitrack_STFTrefiner
   - logging: base_logging
 
-model_dir: "/data5/eloi/experiments/1A_tencymastering_vocals"
+model_dir: "/data4/eloi/experiments/1A_tencymastering_vocals"
 
 dset:
   train:

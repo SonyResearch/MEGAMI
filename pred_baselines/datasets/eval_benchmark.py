@@ -203,8 +203,8 @@ class Eval_Benchmark(torch.utils.data.Dataset):
 
             #glob all the subdirectories corresponding to segments:
 
-            segment_subdirs = sorted(glob.glob(os.path.join(song_dir, "*")))
-            #segment_subdirs=[song_dir,]
+            #segment_subdirs = sorted(glob.glob(os.path.join(song_dir, "*")))
+            segment_subdirs=[song_dir,]
 	
 
             for i, segment_subdir in enumerate(segment_subdirs):

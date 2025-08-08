@@ -12,9 +12,10 @@ conf=baseline_WUN_v2_4instr.yaml
 n="baseline_WUN_v2_4instr"
 
 
-PATH_EXPERIMENT=/data5/eloi/experiments_baselines/$n
+PATH_EXPERIMENT=/data4/eloi/experiments_baselines/$n
 
-checkpoint=/data5/eloi/experiments_baselines/baseline_WUN_v2_4instr/1A_tencymastering_vocals-120000.pt
+#checkpoint=/data5/eloi/experiments_baselines/baseline_WUN_v2_4instr/1A_tencymastering_vocals-120000.pt
+checkpoint=/home/eloi/projects/project_mfm_eloi/pred_baselines/checkpoints/baseline_WUN_v2_4instr/1A_tencymastering_vocals-120000.pt
 
 # Number of GPUs to use
 export CUDA_VISIBLE_DEVICES=0
