@@ -56,8 +56,6 @@ class ValidatorFxProcessor:
         else:
             self.metrics_dict = {}
 
-        self.taxonomy_ref = {"vocals": "92", "drums": "11", "bass": "2"}
-        self.taxonomy_ref_inverse = {"92": "vocals", "11": "drums", "2": "bass"}
 
         self.RMS_norm = (
             self.args.exp.RMS_norm
