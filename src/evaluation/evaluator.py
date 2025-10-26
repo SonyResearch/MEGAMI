@@ -70,7 +70,8 @@ class Evaluator:
 
         self.load_dataset(num_tracks_to_load=num_tracks_to_load)  # Load the dataset
         
-        self.anchors=["equal_loudness", "only_rms"]
+        #self.anchors=["equal_loudness", "only_rms"]
+        self.anchors=["only_rms"]
         self.metrics=[
             "pairwise-spectral",
             "pairwise-panning",
@@ -107,13 +108,20 @@ class Evaluator:
             #config_name="conf_S9gate_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
             config_name="conf_S9_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
             #model_dir="/data2/eloi/checkpoints/S9gate"
-            model_dir="/data5/eloi/checkpoints/S9"
+            #model_dir="/scratch/eloi/checkpoints/S9"
+            model_dir="/scratch/work/molinee2/projects/project_mfm_eloi/src_clean/checkpoints"
             ckpt="1C_tencymastering_vocals-160000.pt"
             #ckpt="1C_tencymastering_vocals-290000.pt"
         elif self.S1_code == "S9v6":
-            config_name="conf_S9v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
-            model_dir="/data5/eloi/checkpoints/S9v6"
-            ckpt="1C_tencymastering_vocals-200000.pt"
+            #config_name="conf_S9v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP_CLAPadaptor.yaml"
+            config_name="conf_S9v6_triton.yaml"
+            #model_dir="/data5/eloi/checkpoints/S9v6"
+            model_dir="/scratch/work/molinee2/projects/project_mfm_eloi/src_clean/checkpoints"
+            ckpt="S9v6_1C_tencymastering_vocals-200000.pt"
+        elif self.S1_code == "publicv6":
+            config_name="conf_S1_public.yaml"
+            model_dir="/scratch/work/molinee2/projects/project_mfm_eloi/src_clean/checkpoints"
+            ckpt="styleDiT_multitrack_public-170000.pt"
         elif self.S1_code == "S4v6":
             config_name="conf_S4v6_tencymastering_multitrack_paired_stylefxenc2048AF_contentCLAP.yaml"
             model_dir="/data5/eloi/checkpoints/S4v6"
@@ -159,13 +167,23 @@ class Evaluator:
             model_dir="/data5/eloi/checkpoints/MF3wet"
             #ckpt="mapper_blackbox_TCN-300000.pt"
             ckpt="mapper_blackbox_TCN-180000.pt"
-        if self.S2_code == "MF3wetv6":
+        elif self.S2_code == "MF3wetv6":
             #config_name="conf_MF3gatewet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
-            config_name="conf_MF3wetv6_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
+            #config_name="conf_MF3wetv6_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
+            config_name="conf_MF3wetv6_triton.yaml"
             #model_dir="/data2/eloi/checkpoints/MF3gatewet"
-            model_dir="/data5/eloi/checkpoints/MF3wetv6"
+            #model_dir="/data5/eloi/checkpoints/MF3wetv6"
+            model_dir="/scratch/work/molinee2/projects/project_mfm_eloi/src_clean/checkpoints"
             #ckpt="mapper_blackbox_TCN-300000.pt"
-            ckpt="mapper_blackbox_TCN-270000.pt"
+            #ckpt="mapper_blackbox_TCN-270000.pt"
+            ckpt="MF3wetv6_mapper_blackbox_TCN-270000.pt"
+        elif self.S2_code == "publicv6":
+            #config_name="conf_MF3gatewet_mapper_blackbox_predictive_fxenc2048AFv3CLAP_paired.yaml"
+            config_name="conf_mapper_public.yaml"
+            #model_dir="/data2/eloi/checkpoints/MF3gatewet"
+            model_dir="/scratch/work/molinee2/projects/project_mfm_eloi/src_clean/checkpoints"
+            #ckpt="mapper_blackbox_TCN-300000.pt"
+            ckpt="mapper_blackbox_public_TCN-450000.pt"
         else:
             raise ValueError(f"Unknown S2_code: {self.S2_code}")
 
@@ -267,7 +285,7 @@ class Evaluator:
                num_tracks=-1,
                num_examples=-1,
                num_segments_per_track=-1,
-               path="/data5/eloi/test_set/MDX_TM_benchmark",
+               path="/scratch/elec/t412-asp/automix/MDX_TM_benchmark",
             )
         else:
             raise ValueError(f"Unknown dataset_code: {self.dataset_code}")
@@ -345,7 +363,7 @@ class Evaluator:
 
         Fxencoder_kwargs=omegaconf.OmegaConf.create(
             {
-                "ckpt_path": "/home/eloi/projects/project_mfm_eloi/src/utils/feature_extractors/ckpt/fxenc_plusplus_default.pt"
+                "ckpt_path": "/scratch/work/molinee2/projects/project_mfm_eloi/src_clean/checkpoints/fxenc_plusplus_default.pt"
             }
         )
 

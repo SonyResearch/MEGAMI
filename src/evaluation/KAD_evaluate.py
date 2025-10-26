@@ -17,7 +17,7 @@ from evaluation.dist_metrics import KADFeatures
 # see device 1
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-path_test_set="/data5/eloi/test_set/MDX_TM_benchmark"
+path_test_set="/scratch/elec/t412-asp/automix/MDX_TM_benchmark"
 
 set="MDX_TM"
 
@@ -59,28 +59,28 @@ for feature in features:
     if feature=="AFxRep":
         AFxRep_args = {
               "distance_type": "cosine",  # not used
-              "ckpt_path": "/home/eloi/projects/project_mfm_eloi/src/tmp/afx-rep.ckpt"
+              "ckpt_path": "/scratch/work/molinee2/projects/project_mfm_eloi/src/tmp/afx-rep.ckpt"
         }
         AFxRep_args = omegaconf.OmegaConf.create(AFxRep_args)
         KAD_metrics[feature] = KADFeatures(type="AFxRep", sample_rate=44100, AFxRep_args=AFxRep_args, KAD_args=KAD_args)
     elif feature=="FxEncoder":
         fx_encoder_args = {
             "distance_type": "cosine",  # not used
-            "ckpt_path": "utils/feature_extractors/ckpt/fxenc_default.pt"
+            "ckpt_path": "/scratch/work/molinee2/projects/project_mfm_eloi/src/utils/feature_extractors/ckpt/fxenc_default.pt"
         }
         fx_encoder_args = omegaconf.OmegaConf.create(fx_encoder_args)
         KAD_metrics[feature] = KADFeatures(type="fx_encoder", sample_rate=44100, fx_encoder_args=fx_encoder_args, KAD_args=KAD_args)
     elif feature=="FxEncoder++":
         fx_encoder_plusplus_args = {
             "distance_type": "cosine",  # not used
-            "ckpt_path": "utils/feature_extractors/ckpt/fxenc_plusplus_default.pt"
+            "ckpt_path": "/scratch/work/molinee2/projects/project_mfm_eloi/src_clean/checkpoints/fxenc_plusplus_default.pt"
         }
         fx_encoder_plusplus_args = omegaconf.OmegaConf.create(fx_encoder_plusplus_args)
         KAD_metrics[feature] = KADFeatures(type="fx_encoder_++", sample_rate=44100, fx_encoder_plusplus_args=fx_encoder_plusplus_args, KAD_args=KAD_args)
 
     elif feature=="CLAP":
         clap_args = {
-            "ckpt_path": "/data5/eloi/checkpoints/laion_clap/music_audioset_epoch_15_esc_90.14.patched.pt",
+            "ckpt_path": "/scratch/work/molinee2/projects/project_mfm_eloi/src_clean/checkpoints/music_audioset_epoch_15_esc_90.14.patched.pt",
             "distance_type": "cosine",
             "normalize": True,  # if True, the features will be normalized
             "use_adaptor": False,  # if True, the features will be adapted to the CLAP space
@@ -190,17 +190,26 @@ for song_dir in song_dirs:
 # create dataframe colums are features, rows are methods
 dataframe= pd.DataFrame(columns=["method"] +list(KAD_metrics.keys()))
 
-filename_results="results_eval/results_KAD"+f"_{set}_708_2.csv"
+filename_results="results_eval/results_KAD"+f"_{set}_public_3_v3_4.csv"
 
 #methods=[ "fxnorm_automix_S_Lb", "fxnorm_automix_L_Lb",]
 #methods=[ "proposed_random_churn","S3_random_churn", "S4_random_churn", "only_rms_S4_random_churn",  "only_rms_random_churn" ]
 #methods=["mst_oracle",  "equal_loudness", "diff_baseline",  "proposed_oracle", "proposed_centroid_close", "proposed_centroid_far", "proposed_random", "only_rms_centroid_close", "only_rms_centroid_far", "only_rms_random" ]
-methods=[ "proposed_random", "only_rms_random" ]
+#methods=[ "proposed_public", "only_rms_public" ]j
+#methods=[ "S1public_S2internal"]
+#methods=[ "S1public_S2internal"]
+#methods=[ "S1internal_S2public"]
+#methods=[ "S1internal_S2publicv3", "S1publicv3_S2publicv3",  "S1publicv3_S2internal"]
+#methods=[ "S1public_S2publicv3"]  
+#methods=[ "S1public_S2publicv3",  "S1public_S2publicv3_oracle",   "S1public_S2publicv3_rms"]  
 #methods=["mst_oracle",  "equal_loudness", "diff_baseline",  "proposed_oracle", "proposed_random", "only_rms_random" , "proposed_centroid_close", "proposed_centroid_far", "only_rms_centroid_close", "only_rms_centroid_far"]
-#methods=["cfg2_random", "cfg2_random_only_rms", "cfg1_T100_random", "cfg1_T100_onlyrms", "S3_random", "S3_onlyrms", "S4_random", "S4_onlyrms"]
+#methods=["S4_random"]
+#methods=["onlyrms_3108"]
+methods=["publicv3_2"]
 #methods=["prop_random_indep", "only_rms_indep"]
 #methods=["WUN_4instr"]
 #methods=["diff_baseline"]
+#methods=["internal_2708", "equal_loudness", "internal_2708_oracle"]
 #methods=["WUN_4instr", "WUN_14instr", "DMC_14instr"]
 
 
@@ -236,6 +245,10 @@ for method in methods:
            def get_pred_file_path(dir):
                pred_mixture= os.path.join(dir,"oracle_proposed", "mix.wav")
                return pred_mixture
+        elif method=="publicv3_oracle":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"oracle_proposed_public", "mix.wav")
+               return pred_mixture
         elif method=="proposed_centroid_close":
            def get_pred_file_path(dir):
                pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1", "centroid_close.wav")
@@ -247,6 +260,26 @@ for method in methods:
         elif method=="proposed_random":
            def get_pred_file_path(dir):
                pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30", "random.wav")
+               return pred_mixture
+        elif method=="proposed_random_3108":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30_3108", "random.wav")
+               return pred_mixture
+        elif method=="proposed_random_3108_v2":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30_3108_v2", "random.wav")
+               return pred_mixture
+        elif method=="onlyrms_3108":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30_3108_v2", "only_rms_random.wav")
+               return pred_mixture
+        elif method=="proposed_random_3108_v2_oracle":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30_3108_v2_oracle", "random.wav")
+               return pred_mixture
+        elif method=="proposed_random_3108":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30_3108", "random.wav")
                return pred_mixture
         elif method=="proposed_random_churn":
            def get_pred_file_path(dir):
@@ -296,6 +329,22 @@ for method in methods:
            def get_pred_file_path(dir):
                pred_mixture= os.path.join(dir,"stylediffpipeline_S3v6_MF3wetv6_MDX_TM_benchmark_cfg_1", "only_rms_random.wav")
                return pred_mixture
+        elif method=="S4_random":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S4v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30", "random.wav")
+               return pred_mixture
+        elif method=="S4_3108":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S4v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30_3108_v2", "random.wav")
+               return pred_mixture
+        elif method=="publicv3":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_publicv3_publicv3_MDX_TM_benchmark_cfg_1_T30_publicv3", "random.wav")
+               return pred_mixture
+        elif method=="publicv3_2":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_public_publicv3_MDX_TM_benchmark_cfg_1_T30_publicv3_2", "random.wav")
+               return pred_mixture
         elif method=="S4_random_churn":
            def get_pred_file_path(dir):
                pred_mixture= os.path.join(dir,"stylediffpipeline_S4v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T50_churn5", "random.wav")
@@ -311,6 +360,10 @@ for method in methods:
         elif method=="prop_random_indep":
            def get_pred_file_path(dir):
                pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_indep", "random.wav")
+               return pred_mixture
+        elif method=="prop_random_indep_3108":
+           def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"stylediffpipeline_S9v6_MF3wetv6_MDX_TM_benchmark_cfg_1_T30_3108_v2_independent", "random.wav")
                return pred_mixture
         elif method=="only_rms_indep":
            def get_pred_file_path(dir):
@@ -328,6 +381,54 @@ for method in methods:
             def get_pred_file_path(dir):
                 pred_mixture= os.path.join(dir,"DMC_14instr", "pred_mixture.wav")
                 return pred_mixture
+        elif method=="proposed_public":
+            def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"ours_public", "mixture_processed.wav")
+               return pred_mixture
+        elif method=="S1public_S2internal":
+            def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"ours_S1public_S2internal", "mixture_processed.wav")
+               return pred_mixture
+        elif method=="S1internal_S2public":
+            def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"ours_S1internal_S2public", "mixture_processed.wav")
+               return pred_mixture
+        elif method=="S1internal_S2publicv3":
+            def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"ours_S1internal_S2publicv3", "mixture_processed.wav")
+               return pred_mixture
+        elif method=="S1publicv3_S2publicv3":
+            def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"ours_S1publicv3_S2publicv3", "mixture_processed.wav")
+               return pred_mixture
+        elif method=="S1public_S2publicv3_rms":
+            def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"ours_S1public_S2publicv3", "mixture_processed_onlyrms.wav")
+               return pred_mixture
+        elif method=="S1public_S2publicv3":
+            def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"ours_S1public_S2publicv3", "mixture_processed.wav")
+               return pred_mixture
+        elif method=="S1public_S2publicv3_oracle":
+            def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"ours_S1public_S2publicv3", "oracle.wav")
+               return pred_mixture
+        elif method=="S1publicv3_S2internal":
+            def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"ours_S1publicv3_S2internal", "mixture_processed.wav")
+               return pred_mixture
+        elif method=="only_rms_public":
+            def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"ours_public", "mixture_processed_onlyrms.wav")
+               return pred_mixture
+        elif method=="internal_2708":
+            def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"internal_2708", "mixture_processed.wav")
+               return pred_mixture
+        elif method=="internal_2708_oracle":
+            def get_pred_file_path(dir):
+               pred_mixture= os.path.join(dir,"internal_2708", "oracle.wav")
+               return pred_mixture
         else:
            raise ValueError(f"Unknown method: {method}")
     

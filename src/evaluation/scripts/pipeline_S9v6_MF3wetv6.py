@@ -4,7 +4,7 @@ sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '../..')))
 
 from evaluation.evaluator import Evaluator
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 import omegaconf
 method_args= {
@@ -17,6 +17,6 @@ method_args= {
 
 method_args=omegaconf.OmegaConf.create(method_args)
 
-evaluator=Evaluator(method="stylediffpipeline", method_args=method_args, dataset_code="MDX_TM_benchmark", extra_id="cfg_1_T30", path_results="/data2/eloi/results")
+evaluator=Evaluator(method="stylediffpipeline", method_args=method_args, dataset_code="MDX_TM_benchmark", extra_id="cfg_1_T30_3108", path_results="/scratch/elec/t412-asp/automix/results")
 
 evaluator.run_evaluation_paired()

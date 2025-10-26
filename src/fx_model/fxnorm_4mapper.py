@@ -1,16 +1,16 @@
 import torch
 import numpy as np
-import torchcomp
+#import torchcomp
 
-from fx_model.processors.compexp import prepare_compexp_parameters, compexp_functional
+#from fx_model.processors.compexp import prepare_compexp_parameters, compexp_functional
 
-from fx_model.processors.peq import prepare_PEQ_parameters, peq_functional, prepare_PEQ_FDN_parameters, peq_FDN_functional
+#from fx_model.processors.peq import prepare_PEQ_parameters, peq_functional, prepare_PEQ_FDN_parameters, peq_FDN_functional
 
 #from fx_model.processors.STFT_diffused_reverb import STFTMaskedNoiseReverb_filterbank, STFTMaskedNoiseReverb, STFTEQ
 from utils.training_utils import Gauss_smooth, Gauss_smooth_vectorized, create_music_mean_spectrum_curve, prepare_smooth_filter
 
 import utils.training_utils as utils
-from utils.distributions import Normal, NormalRamp, Uniform, sample_from_distribution_dict, UniformRamp, LogUniform
+#from utils.distributions import Normal, NormalRamp, Uniform, sample_from_distribution_dict, UniformRamp, LogUniform
 
 def T602logmag(t60, sample_rate=44100, hop_length=512):
 
@@ -36,7 +36,7 @@ class FxNormAug:
 
         self.sample_rate = sample_rate
         self.device = device
-        self.train_setup()
+        #self.train_setup()
 
         self.EQ_normalize_setup()  # Initialize EQ normalization function
 
@@ -62,7 +62,6 @@ class FxNormAug:
         }
 
 
-    
 
     def apply_compexp_1(self, x):
 
