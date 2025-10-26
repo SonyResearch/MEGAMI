@@ -31,7 +31,7 @@ This repository includes multiple branches corresponding to different stages and
 
 * **`main`** — Clean, documented version of the codebase. Contains all components required to **reproduce the results reported in the MEGAMI paper**.
 * **`original`** — Full development version used during the author’s internship, including exploratory and ablation code.
-* **`E2E-Flow`** — Implementation of the **End-to-End Flow Matching** baseline described in the paper.
+* **`E2E_flow`** — Implementation of the **End-to-End Flow Matching** baseline described in the paper.
 * **`pred_baselines`** — Implementations of **predictive (deterministic) baselines** used for comparison in the paper.
 
 

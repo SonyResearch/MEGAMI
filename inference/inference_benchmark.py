@@ -33,7 +33,7 @@ class InferenceBenchmark:
         path_results="/data5/eloi/results",
         num_tracks_to_load=1,
         KAD_features=["AFxRep", "FxEncoder", "FxEncoder++", "CLAP"],
-        path_benchmark="/scratch/elec/t412-asp/automix/MDX_TM_benchmark",
+        path_benchmark="/home/eloi.moliner/MDX_TM_benchmark",
     ):
 
         self.method_args = method_args
