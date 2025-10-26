@@ -194,7 +194,6 @@ checkpoints/
 
 | File name                                      | Description                                                                                                                                           |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CLAP_DA_internal-20000.pt`                    | Internal CLAP-based domain adaptation checkpoint.                                                                                                     |
 | `CLAP_DA_public-100000.pt`                     | Public CLAP-based domain adaptation checkpoint for effects removal.                                                                                   |
 | `FxGenerator_public-50000.pt`                  | Public FxGenerator diffusion checkpoint operating in the embedding space.                                                                             |
 | `FxProcessor_public_blackbox_TCN_340000.pt`    | Public FxProcessor checkpoint (black-box TCN model).                                                                                                  |
