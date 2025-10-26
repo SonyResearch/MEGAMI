@@ -10,7 +10,7 @@
 Unlike conventional regression-based methods that predict a single deterministic mix, MEGAMI employs **conditional diffusion models** to capture the diversity of professional mixing decisions, modeling the inherently *one-to-many* nature of the task.
 
 The framework operates in an **effect embedding space** rather than directly in the audio domain, enabling realistic and flexible mixing without altering musical content.  
-Through **domain adaptation in the CLAP embedding space**, MEGAMI can train on both *dry* (unprocessed) and *wet* (professionally mixed) recordings. A **permutation-equivariant transformer** architecture allows operation on an arbitrary number of unlabeled tracks, and evaluations show performance approaching **human-level quality** across diverse musical genres.
+Through **domain adaptation in the CLAP embedding space**, MEGAMI can train on both *dry* (unprocessed) and *wet* (professionally mixed) recordings. A permutation-equivariant transformer architecture allows operation on an arbitrary number of unlabeled tracks, and evaluations show performance approaching **human-level quality** across diverse musical genres.
 
 
 ---
@@ -22,18 +22,6 @@ Through **domain adaptation in the CLAP embedding space**, MEGAMI can train on b
 | **FxGenerator** | Generates per-track effect embeddings conditioned on raw track features. |
 | **FxProcessor** | Neural effects processor applying the generated embeddings to audio. |
 | **CLAP Domain Adaptor** | Adapts representations between dry and wet domains using CLAP embeddings. |
-
----
-
-## 🌿 Branches
-
-This repository includes multiple branches corresponding to different stages and baselines of the project:
-
-* **`main`** — Clean, documented version of the codebase. Contains all components required to **reproduce the results reported in the MEGAMI paper**.
-* **`original`** — Full development version used during the author’s internship, including exploratory and ablation code.
-* **`E2E_flow`** — Implementation of the **End-to-End Flow Matching** baseline described in the paper.
-* **`pred_baselines`** — Implementations of **predictive (deterministic) baselines** used for comparison in the paper.
-
 
 ---
 
@@ -49,20 +37,13 @@ This repository includes multiple branches corresponding to different stages and
 ├── train_FxGenerator_public.sh
 ├── train_FxProcessor_public.sh
 
-├── train_CLAPDomainAdaptor_TencyMastering.sh   # Training scripts with internal data
-├── train_FxGenerator_TencyDB.sh
-├── train_FxProcessor_TencyMastering.sh
-│
+
 ├── inference/                          # Inference and validation modules
 │   ├── inference_benchmark.py
 │   ├── sampler_euler_heun_multitrack.py
-│   ├── validator_FxGenerator.py
-│   └── validator_FxProcessor.py
 │
 ├── datasets/                           # Dataset loaders
-│   ├── TencyDB_multitrack.py
 │   ├── MoisesDB_MedleyDB_multitrack.py
-│   ├── TencyMastering_multitrack_paired.py
 │   ├── public_multidataset_singletrack.py
 │   └── eval_benchmark.py
 │
@@ -213,10 +194,6 @@ checkpoints/
 
 | File name                                      | Description                                                                                                                                           |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `FxGenerator_TencyMastering_paired-50000.pt`   | FxGenerator trained on the *TencyMastering* dataset with paired dry/wet stems.                                                                        |
-| `FxGenerator_TencyMastering-50000.pt`          | FxGenerator trained on *TencyMastering* (unpaired version). Captures the multimodal distribution of mixing decisions via domain adaptation.           |
-| `FxGenerator_TencyDB-200000.pt`                | FxGenerator trained on *TencyDB*, a larger internal multitrack collection of mastered songs.                                                          |
-| `FxProcessor_internal_blackbox_TCN-270000.pt`  | Internal FxProcessor checkpoint (black-box TCN model).                                                                                                |
 | `CLAP_DA_internal-20000.pt`                    | Internal CLAP-based domain adaptation checkpoint.                                                                                                     |
 | `CLAP_DA_public-100000.pt`                     | Public CLAP-based domain adaptation checkpoint for effects removal.                                                                                   |
 | `FxGenerator_public-50000.pt`                  | Public FxGenerator diffusion checkpoint operating in the embedding space.                                                                             |

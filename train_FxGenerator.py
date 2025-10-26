@@ -591,6 +591,9 @@ def _main(args):
 
     print("args.dset.validation", args.dset.validation)
     if args.dset.validation is not None:
+
+        raise NotImplementedError("Validation not implemented for FxGeneratorTrainer. Set validation to None.")
+
         val_set_dict = {}
         val_set = hydra.utils.instantiate(args.dset.validation)
         val_loader = torch.utils.data.DataLoader(
