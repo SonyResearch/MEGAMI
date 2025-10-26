@@ -1,0 +1,138 @@
+
+train:
+  _target_: datasets.public_multidataset_singletrack.MultiDatasetDry
+
+  datasets: ["IDMT_SMT_DRUMS", 
+             "MedleyDB", 
+             "GuitarSet",
+             "OpenSinger",
+             "IDMT_SMT_GUITAR",
+             "IDMT_SMT_BASS",
+             "Aalto-anechoic"
+            ]
+
+  probabilities: [0.05,
+                  0.3,
+                  0.1,
+                  0.2,
+                  0.1,
+                  0.1,
+                  0.1
+            ]
+  
+  datasets_IR: ["ReverbFx", 
+                "ASH",
+                "QMUL",
+                "Arni"
+            ]
+
+
+  mode: "dry-wet"
+  segment_length: 525312
+  fs: 44100
+  stereo: True
+
+  apply_effects_on_dry: False #if True, the dry signal will be augmented with effects
+  p_effects_dry: 0
+  p_effects_wet: 0.8
+
+  random_polarity: True
+  random_shift: 0 #shift in samples to apply to the audio, if random
+
+  tracks: "all"
+
+  path_ReverbFx: "/scratch/elec/t412-asp/IR_datasets/ReverbFx/train"
+  path_csv_ReverbFx: "/scratch/elec/t412-asp/IR_datasets/ReverbFx/meta/train.csv"
+
+  path_ASH: "/scratch/elec/t412-asp/IR_datasets/ASH-IR-Dataset"
+  path_csv_ASH: "/scratch/elec/t412-asp/IR_datasets/ASH-IR-Dataset/IRs.csv"
+
+  path_QMUL: "/scratch/elec/t412-asp/IR_datasets/QMUL"
+  path_csv_QMUL: "/scratch/elec/t412-asp/IR_datasets/QMUL/IRs.csv"
+
+  path_Arni: "/scratch/elec/t412-asp/IR_datasets/Arni_subset"
+  path_csv_Arni: "/scratch/elec/t412-asp/IR_datasets/Arni_subset/IRs.csv"
+  
+
+  path_medleydb: "/scratch/elec/t412-asp/audio_datasets/MedleyDB/all_v1v2"
+  path_csv_medleydb: "conf/data/MDB_tracks_train.csv"
+
+  path_IDMT_SMT_DRUMS: "/scratch/elec/t412-asp/audio_datasets/IDMT-SMT-DRUMS"
+  path_csv_IDMT_SMT_DRUMS:  "conf/data/IDMT_SMT_DRUMS_tracks_train.csv"
+
+  path_GuitarSet: "/scratch/elec/t412-asp/audio_datasets/Guitar/GuitarSet/audio_mono-mic"
+  path_csv_GuitarSet: "conf/data/GuitarSet_train_list.csv"
+
+  path_OpenSinger: "/scratch/elec/t412-asp/audio_datasets/singing_voice/OpenSinger"
+  path_csv_OpenSinger: "conf/data/OpenSinger_train_list.csv"
+
+  path_IDMT_SMT_GUITAR: "/scratch/elec/t412-asp/audio_datasets/Guitar/IDMT-SMT-GUITAR_V2/dataset4/acoustic_mic"
+  path_csv_IDMT_SMT_GUITAR:  "conf/data/IDMT_SMT_GUITAR_tracks_train.csv"
+
+  path_IDMT_SMT_BASS: "/scratch/elec/t412-asp/audio_datasets/IDMT-SMT-BASS"
+  path_csv_IDMT_SMT_BASS:  "conf/data/IDMT_SMT_BASS_train_files.csv"
+
+  path_Aalto_anechoic: "/scratch/elec/t412-asp/audio_datasets/Aalto_anechoic"
+  path_csv_Aalto_anechoic: "conf/data/Aalto_anechoic_train_files.csv"
+
+
+  num_examples: -1
+
+  RMS_threshold_dB: -50.0
+ 
+  #random seed
+  seed: 42
+
+validation:
+  _target_: datasets.public_multidataset_singletrack.MultiDatasetDry_Test
+
+  mode: "validation"
+
+  path_medleydb: "/scratch/elec/t412-asp/audio_datasets/MedleyDB/all_v1v2"
+  path_csv_medleydb: "conf/data/MDB_tracks_val.csv"
+
+  path_ReverbFx: "/scratch/elec/t412-asp/IR_datasets/ReverbFx/valid"
+  RIR_path_csv: "/scratch/elec/t412-asp/IR_datasets/ReverbFx/meta/valid.csv"
+
+  segment_length: 525312
+  fs: 44100
+  stereo: True
+  num_tracks: -1
+
+  tracks: "all"
+
+
+  num_examples: 256
+
+
+  RMS_threshold_dB: -60.0
+ 
+  #random seed
+  seed: 42
+
+validation_2:
+  _target_: datasets.public_multidataset_singletrack.MultiDatasetDry_Test
+
+  mode: "train"
+
+  path_medleydb: "/scratch/elec/t412-asp/audio_datasets/MedleyDB/all_v1v2"
+  path_csv_medleydb: "conf/data/MDB_tracks_train.csv"
+
+  path_ReverbFx: "/scratch/elec/t412-asp/IR_datasets/ReverbFx/train"
+  RIR_path_csv: "/scratch/elec/t412-asp/IR_datasets/ReverbFx/meta/train.csv"
+
+  segment_length: 525312
+  fs: 44100
+  stereo: True
+  num_tracks: 10
+
+  tracks: "all"
+
+
+  num_examples: 256
+
+
+  RMS_threshold_dB: -60.0
+ 
+  #random seed
+  seed: 42

@@ -1,0 +1,35 @@
+train:
+  _target_: datasets.MoisesDB_MedleyDB_multitrack.MoisesDB_MedleyDB_Multitrack_Dataset
+  mode: "dry-wet"
+  segment_length: 525312
+  fs: 44100
+  stereo: True
+
+  random_order: True
+  random_polarity: True
+
+  tracks: "all"
+
+  MedleyDB_path: "/scratch/elec/t412-asp/audio_datasets/MedleyDB/all_v1v2"
+  MoisesDB_path: "/scratch/elec/t412-asp/audio_datasets/MoisesDB/moisesdb_v0.1"
+
+  path_csv: "conf/data/MoisesDB_MedleyDB_train.csv"
+
+  normalize_params:
+    normalize_mode: "rms_dry"
+    rms_dry: -25
+
+  num_examples: -1
+
+  RMS_threshold_dB: -50.0
+
+  #random seed
+  seed: 42
+
+  use_mixing_augmentation: True
+
+validation: Null
+
+validation_2: Null
+
+

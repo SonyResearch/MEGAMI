@@ -1,0 +1,81 @@
+
+train:
+  _target_: datasets.TencyDB_multitrack.TencyDB_Multitrack_Dataset
+  mode: "dry-wet"
+  segment_length: 525312
+  fs: 44100
+  stereo: True
+
+  random_order: True
+  random_polarity: True
+
+  tracks: "all"
+
+  tency_path: "/data5/martinez/tency1_tency2_flac_48000k"
+  tencymastering_path: "/data5/eloi/TencyMastering"
+  path_csv: "conf/data/TencyDB_train_split.csv"
+
+  normalize_params:
+    normalize_mode: "rms_dry"
+    rms_dry: -25
+
+  num_examples: -1
+
+  RMS_threshold_dB: -40.0
+
+  #random seed
+  seed: 42
+
+validation:
+  _target_: datasets.tency_mastering_multitrack_paired.TencyMastering_Test
+  mode: "dry-wet"
+
+  segment_length: 525312
+  fs: 44100
+  stereo: True
+  num_tracks: -1
+
+  tracks: "all"
+
+  path_csv: "conf/data/TencyMastering_val_split.csv"
+
+  normalize_params:
+    normalize_mode: "rms_dry"
+    rms_dry: -25
+
+  num_examples: -1
+
+
+  RMS_threshold_dB: -40.0
+ 
+  #random seed
+  seed: 42
+
+validation_2:
+  _target_: datasets.tency_mastering_multitrack_paired.TencyMastering_Test
+
+
+  mode: "dry-wet-train"
+  segment_length: 525312
+  fs: 44100
+  stereo: True
+
+  num_tracks: 36
+
+  tracks: "all"
+
+  path_csv: "conf/data/TencyMastering_train_split.csv"
+
+  normalize_params:
+    normalize_mode: "rms_dry"
+    rms_dry: -25
+
+  num_examples: -1
+
+  RMS_threshold_dB: -40.0
+ 
+  #random seed
+  seed: 42
+
+
+

@@ -1,6 +1,0 @@
-
-_target_: "networks.difffvoxparamestimator.DiffVoxParamEstimatorTCN"
-
-ninputs: 1
-cond_dim: 1024
-sample_rate: 44100

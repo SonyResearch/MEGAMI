@@ -1,8 +1,0 @@
-
-_target_: "networks.difffvoxparamestimator.DiffVoxParamEstimatorLogMelSpec"
-
-cond_dim: 192
-
-sample_rate: 44100
-
-

@@ -1,5 +1,0 @@
-
-_target_: networks.mixwaveunet.MixWaveUNet
-
-ninputs: 14
-noutputs: 2
