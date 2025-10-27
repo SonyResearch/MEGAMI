@@ -1,0 +1,248 @@
+.player {
+    width: 100%;
+    max-width: 300px;
+    margin: 5px auto;
+    display: block;
+}
+
+.player:focus {
+    outline: 2px solid #007bff;
+    outline-offset: 2px;
+}
+
+.passage {
+    width: 100px;
+    font-weight: 600;
+}
+
+.params {
+    font-weight: 400;
+    margin: 0;
+}
+
+.table {
+    display: table;
+    width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.table td {
+    vertical-align: middle !important;
+    padding: 15px 8px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    padding: 15px 8px;
+    border-bottom: 2px solid #dee2e6;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.audio-col {
+    min-width: 160px;
+    width: 200px;
+    text-align: center;
+}
+
+/* Highlight the proposed method */
+.table th:nth-child(5),
+.table td:nth-child(5) {
+    background-color: #e8f5e8;
+    font-weight: 600;
+}
+
+.table th:nth-child(7),
+.table td:nth-child(7) {
+    font-weight: 600;
+    background-color: #f0f0f0;
+    color: #666;
+}
+
+.table th:nth-child(8),
+.table td:nth-child(8) {
+    font-weight: 600;
+    background-color: #f0f0f0;
+    color: #666;
+}
+
+.table th:nth-child(9),
+.table td:nth-child(9) {
+    font-weight: 600;
+    background-color: #f0f0f0;
+    color: #666;
+}
+
+.table th:nth-child(10),
+.table td:nth-child(10) {
+    font-weight: 600;
+    background-color: #f0f0f0;
+    color: #666;
+}
+
+.table tr:hover {
+    background-color: #f5f5f5;
+}
+
+.table tr:hover td:nth-child(5) {
+    background-color: #d4edda;
+}
+
+.table tr:hover td:nth-child(7) {
+    background-color: #e0e0e0;
+}
+.table tr:hover td:nth-child(8) {
+    background-color: #e0e0e0;
+}
+.table tr:hover td:nth-child(9) {
+    background-color: #e0e0e0;
+}
+.table tr:hover td:nth-child(10) {
+    background-color: #e0e0e0;
+}
+
+.row-grey {
+    background-color: #f8f8f8;
+}
+
+.section {
+    margin-bottom: 3rem;
+}
+
+.section h3 {
+    color: #495057;
+    margin-bottom: 1rem;
+}
+
+.iframe-container {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  padding-top: 56.25%; /* 16:9 Aspect Ratio (divide 9 by 16 = 0.5625) */
+}
+
+/* Then style the iframe to fit in the container div with full height and width */
+.responsive-iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.abstract {
+    margin: 0;
+    max-width: 70%;
+    margin: 0 auto !important; 
+	float: none !important; 
+}
+
+.target {
+    color: rgb(126, 126, 126);
+    font-weight: 600;
+}
+
+.others {
+    color: rgb(67,74,101);
+    font-weight: 600;
+}
+
+.tcn {
+    color: rgb(227, 126, 35);
+    font-weight: 600;
+}
+
+.ours {
+    color: rgb(89, 146, 54);
+    font-weight: 600;
+}
+
+.detail {
+    font-size: small;
+    font-weight: 500;
+}
+
+.btn {
+    border-radius: 20px;
+    margin: 5px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .audio-col {
+        min-width: 120px;
+        width: 150px;
+    }
+    
+    .player {
+        width: 100%;
+        max-width: 140px;
+    }
+    
+    .table {
+        font-size: 0.9rem;
+    }
+    
+    .abstract {
+        max-width: 95%;
+    }
+}
+
+@media (max-width: 576px) {
+    .table th,
+    .table td {
+        padding: 8px 4px;
+    }
+    
+    .audio-col {
+        min-width: 100px;
+        width: 120px;
+    }
+    
+    .player {
+        max-width: 110px;
+    }
+}
+
+/* Loading indicator for audio */
+.player:not([src]) {
+    opacity: 0.6;
+}
+
+/* Smooth transitions */
+.table tr {
+    transition: background-color 0.2s ease;
+}
+
+.btn {
+    transition: all 0.2s ease;
+}
+
+.dry-stems {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+}
+
+.stem {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+
+.stem-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #777;
+    margin-top: 2px;
+}

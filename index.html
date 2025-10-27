@@ -1,0 +1,493 @@
+
+<!doctype html>
+<html lang="en" class="h-100">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="">
+    <title>MEGAMI: Automatic Music Mixing Using a Generative Model of Effect Embeddings </title>
+
+    <!-- Bootstrap core CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
+          integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z" crossorigin="anonymous">
+    <meta name="theme-color" content="#563d7c">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.0/font/bootstrap-icons.css">
+</head>
+
+<body>
+<!-- Page Content -->
+<div class="text-center">
+    <div class="row">
+        <div class="col-lg-12">
+            <br>
+            <h1 class="mt-5 mb-3">Automatic Music Mixing Using a Generative Model of Effect Embeddings</h1>
+            <p class="lead">
+                Eloi Moliner <sup>1</sup>,
+                Marco A. Martínez-Ramírez <sup>2</sup>,
+                Junghyun Koo <sup>2</sup>,
+                Wei-Hsiang Liao <sup>2</sup>,
+                Kin Wai Cheuk <sup>2</sup>,
+                Joan Serrà <sup>2</sup>,
+                Vesa Välimäki <sup>1</sup>,
+                Yuki Mitsufuji <sup>2,3</sup>
+            </p>
+
+            <p class="lead">
+                <sup>1</sup> Acoustics Lab, Department of Information and Communications Engineering, Aalto University, Finland<br>
+                <sup>2</sup> Sony AI <br>
+                <sup>3</sup> Sony Group Corporation <br>
+            </p>
+
+        </div>
+    </div>
+</div>
+
+<div class="container">
+
+    <div class="section">
+        <h2 class="">Listening Test Examples </h2>
+        <hr>
+
+        <table class="table table-sm text-center" style="vertical-align: middle;">
+            <tr>
+                <th>Example</th>
+                <th class="audio-col">Equal Loudness</th>
+                <th class="audio-col">E2E-Flow</th>
+                <th class="audio-col">FxNorm-AutoMix L</th>
+                <th class="audio-col">MEGAMI I-L (proposed)</th>
+                <th class="audio-col">Human</th>
+                <th class="audio-col">Dry Stems</th>
+                <th class="audio-col"></th>
+                <th class="audio-col">  </th>
+                <th class="audio-col"> </th>
+            </tr>
+            <tr>
+                <td></td>
+                <td> </td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td >Vocals</td>
+                <td >Bass</td>
+                <td > Drums </td>
+                <td>Other </td>
+            </tr>
+
+            <tr>
+                 <td><strong> 2 - Rock</strong></td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/008/equal_loudness/anchor.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/008/diff_baseline/pred_mixture.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/008/fxnorm_automix_L_Lb_v2/mixture_output.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/008/proposed/mixture_processed.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/008/mix/mixture.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/008/dry_4instr/vocals.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/008/dry_4instr/bass.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/008/dry_4instr/drums.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/008/dry_4instr/other.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+            </tr>
+            <tr>
+                 <td><strong>3 - Dance</strong></td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/018/equal_loudness/anchor.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/018/diff_baseline/pred_mixture.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/018/fxnorm_automix_L_Lb_v2/mixture_output.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/018/proposed/mixture_processed.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/018/mix/mixture.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/018/dry_4instr/vocals.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/018/dry_4instr/bass.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/018/dry_4instr/drums.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/018/dry_4instr/other.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+            </tr>
+            <tr>
+                 <td><strong>4 - Disco</strong></td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Disco/equal_loudness/anchor.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Disco/diff_baseline/pred_mixture.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Disco/fxnorm_automix_L_Lb_v2/mixture_output.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Disco/proposed/mixture_processed.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Disco/mix/mixture.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Disco/dry_4instr/vocals.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Disco/dry_4instr/bass.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Disco/dry_4instr/drums.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Disco/dry_4instr/other.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+            </tr>
+
+            <tr>
+                 <td><strong>5 - Country</strong></td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Country1/equal_loudness/anchor.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Country1/diff_baseline/pred_mixture.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Country1/fxnorm_automix_L_Lb_v2/mixture_output.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Country1/proposed/mixture_processed.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Country1/mix/mixture.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Country1/dry_4instr/vocals.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Country1/dry_4instr/bass.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Country1/dry_4instr/drums.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Country1/dry_4instr/other.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+            </tr>
+
+            <tr>
+                 <td><strong> 6 - Grunge</strong></td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Grunge/equal_loudness/anchor.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Grunge/diff_baseline/pred_mixture.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Grunge/fxnorm_automix_L_Lb_v2/mixture_output.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Grunge/proposed/mixture_processed.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Grunge/mix/mixture.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Grunge/dry_4instr/vocals.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Grunge/dry_4instr/bass.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Grunge/dry_4instr/drums.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Grunge/dry_4instr/other.wav_norm.wav" type="audio/wav">
+
+                        Unsupported browser.
+                    </audio>
+                </td>
+            </tr>
+            <tr>
+                 <td><strong>7 - BritPop</strong></td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Britpop/equal_loudness/anchor.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Britpop/diff_baseline/pred_mixture.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Britpop/fxnorm_automix_L_Lb_v2/mixture_output.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Britpop/proposed/mixture_processed.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Britpop/mix/mixture.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Britpop/dry_4instr/vocals.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Britpop/dry_4instr/bass.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Britpop/dry_4instr/drums.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+                <td>
+                    <audio controls="controls" class="player" preload="metadata">
+                        <source src="samples/MusicDelta_Britpop/dry_4instr/other.wav_norm.wav" type="audio/wav">
+                        Unsupported browser.
+                    </audio>
+                </td>
+            </tr>
+        </table>
+
+    </div>
+
+    <!-- Links Section
+    <div class="section mt-4 mb-5">
+        <h3 class="">Links</h3>
+        <hr>
+        <div class="text-center">
+            <a href="#" class="btn btn-primary mr-3">Paper (Coming Soon)</a>
+            <a href="#" class="btn btn-secondary mr-3">Code (Coming Soon)</a>
+            <a href="https://github.com/eloimoliner/MR-CQTdiff" class="btn btn-outline-dark">GitHub Repository</a>
+        </div>
+    </div> -->
+
+</div>
+
+
+<!-- Bootstrap core JavaScript -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"
+        integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+        integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
+        crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js"
+        integrity="sha384-OgVRvuATP1z7JjHLkuOU7Xw704+h835Lr+6QL9UvYjZE3Ipu6Tp75j7Bh/kR0JKI"
+        crossorigin="anonymous"></script>
+
+<script>
+// Simple audio player enhancements
+document.addEventListener('DOMContentLoaded', function() {
+    // Add loading states for audio players
+    const audioPlayers = document.querySelectorAll('audio');
+    
+    audioPlayers.forEach(function(audio) {
+        audio.addEventListener('loadstart', function() {
+            this.style.opacity = '0.6';
+        });
+        
+        audio.addEventListener('canplay', function() {
+            this.style.opacity = '1';
+        });
+        
+        // Pause other audio when one starts playing
+        audio.addEventListener('play', function() {
+            audioPlayers.forEach(function(otherAudio) {
+                if (otherAudio !== audio && !otherAudio.paused) {
+                    otherAudio.pause();
+                }
+            });
+        });
+    });
+    
+    // Add keyboard navigation
+    document.addEventListener('keydown', function(e) {
+        if (e.code === 'Space' && e.target.tagName === 'AUDIO') {
+            e.preventDefault();
+            if (e.target.paused) {
+                e.target.play();
+            } else {
+                e.target.pause();
+            }
+        }
+    });
+});
+</script>
+</body>
+
+</html>
