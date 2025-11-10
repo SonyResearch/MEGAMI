@@ -52,8 +52,8 @@
 }
 
 /* Highlight the proposed method */
-.table th:nth-child(5),
-.table td:nth-child(5) {
+.highlight-5th th:nth-child(5),
+.highlight-5th td:nth-child(5) {
     background-color: #e8f5e8;
     font-weight: 600;
 }
