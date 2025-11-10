@@ -85,7 +85,7 @@ exp:
     _target_: utils.fx_normalization.fxnorm_v2_public.FxNormAug
     sample_rate: 44100
     device: "cuda"
-    features_path: "utils/fx_normalization/features_tency1_4instr_v4.npy"
+    features_path: "utils/fx_normalization/features.npy"
 
 
   use_gated_RMSnorm: True #if True, the gated RMS normalization will be used

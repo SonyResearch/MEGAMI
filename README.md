@@ -108,10 +108,10 @@ defaults:
   - tester: evaluate_FxGenerator
   - logging: base_logging_FxGenerator
 
-model_dir: "experiments/1C_tencymastering_vocals"
+model_dir: "experiments/example"
 
 exp:
-  exp_name: "1C_tencymastering_vocals"
+  exp_name: "example"
   optimizer:
     _target_: "torch.optim.AdamW"
     lr: 1e-4
@@ -202,8 +202,6 @@ checkpoints/
 | `FxProcessor_public_blackbox_TCN_340000.pt`    | Public FxProcessor checkpoint (black-box TCN model).                                                                                                  |
 | `music_audioset_epoch_15_esc_90.14.patched.pt` | LAION-CLAP (music) public checkpoint — [Original link](https://huggingface.co/lukewys/laion_clap/blob/main/music_audioset_epoch_15_esc_90.14.pt). |
 | `fxenc_plusplus_default.pt`                    | FXEncoder++ public checkpoint — [Original link](https://huggingface.co/yytung/fxencoder-plusplus/blob/main/fxenc_plusplus_default.pt).            |
-| `fxenc_default.pt`                             | Default FxEncoder public checkpoint (used for evaluation).                                                                                            |
-| `afx-rep.ckpt`                                 | AFxRep public checkpoint (used for evaluation).                                                                               |
 
 
 
