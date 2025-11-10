@@ -39,7 +39,7 @@ Through **domain adaptation in the CLAP embedding space**, MEGAMI can train on b
 
 
 ├── inference/                          # Inference and validation modules
-│   ├── inference_benchmark.py
+│   ├── inference.py
 │   ├── sampler_euler_heun_multitrack.py
 │
 ├── datasets/                           # Dataset loaders
@@ -61,9 +61,10 @@ Through **domain adaptation in the CLAP embedding space**, MEGAMI can train on b
 │   ├── training_utils.py
 │   └── feature_extractors/
 │
+├── examples/                           # Contains subdirectories of dry track set examples to run inference on.
 ├── conf/                               # Hydra configuration files
 ├── checkpoints/                        # Path where pretrained model checkpoints are expected to be 
-├── run_eval.sh                         # Script for running evaluation benchmark
+├── run_inference.sh                    # Script for running a single song inference, using a directory containing dry tracks
 ├── requirements.txt                    # Dependencies
 └── README.md
 
@@ -174,13 +175,15 @@ python train_FxGenerator.py --config-name=conf_FxGenerator_Public.yaml
 
 Logs and checkpoints are saved under `experiments/<exp_name>/` unless otherwise specified.
 
-### Evaluation
+### Inference
 
-Run the benchmark evaluation, including the KAD computation:
+To run inference on a single track, check the script:
 
 ```bash
-bash run_eval.sh
+bash run_inference.sh
 ```
+The script requires creating a directory containing a set of dry tracks in .wav format, sampled at 44.1 kHz. Examples are provided in "examples/". 
+
 
 ---
 

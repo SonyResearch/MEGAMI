@@ -53,6 +53,8 @@ class EDM_Multitrack_Embeddings:
 
         self.context_signal=context_signal
 
+        self.sample_rate=sample_rate
+
         self.prepare_content_encoder(content_encoder_type, sample_rate, *args, **kwargs)
         self.prepare_style_encoder(style_encoder_type, *args, **kwargs)
 
