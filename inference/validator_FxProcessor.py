@@ -1,3 +1,7 @@
+# Copyright (c) 2025 Sony Research
+# Licensed under CC BY-NC-SA 4.0
+# See LICENSE file for details
+
 from datetime import date
 import math
 import io
