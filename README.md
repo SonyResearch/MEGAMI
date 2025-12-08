@@ -217,7 +217,13 @@ If you use this framework in your research, please cite:
   title={Automatic Music Mixing Using a Generative Model of Effect Embeddings},
   author={Moliner, Eloi and Martínez-Ramírez, Marco A. and Koo, Junghyun and Liao, Wei-Hsiang and  Cheuk, Kin Wai and Serrà, Joan  and Välimäki, Vesa  and Mitsufuji, Yuki  },
   journal={Preprint},
-  year={2025}
 }
 ```
+---
+
+## License
+ 
+ This project is licensed under the *Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License* (CC BY-NC-SA 4.0). For commercial licensing inquiries: marco [dot] martinez @ sony [dot] com
+  year={2025}
+
 
