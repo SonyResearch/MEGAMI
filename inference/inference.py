@@ -1,4 +1,7 @@
-# load generator model
+# Copyright (c) 2025 Sony Research
+# Licensed under CC BY-NC-SA 4.0
+# See LICENSE file for details
+
 import sys
 import os
 from utils.feature_extractors.dsp_features import compute_log_rms_gated_max
