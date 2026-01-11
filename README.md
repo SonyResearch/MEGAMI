@@ -197,9 +197,9 @@ checkpoints/
 
 | File name                                      | Description                                                                                                                                           |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CLAP_DA_public-100000.pt`                     | Public CLAP-based domain adaptation checkpoint for effects removal.                                                                                   |
-| `FxGenerator_public-50000.pt`                  | Public FxGenerator diffusion checkpoint operating in the embedding space.                                                                             |
-| `FxProcessor_public_blackbox_TCN_340000.pt`    | Public FxProcessor checkpoint (black-box TCN model).                                                                                                  |
+| `CLAP_DA_public.pt`                            | Public CLAP-based domain adaptation checkpoint for effects removal  — [Download link](https://github.com/SonyResearch/MEGAMI/releases/download/v0/CLAP_DA_public.pt).                                                                                   |
+| `FxGenerator_public.pt`                        | Public FxGenerator diffusion checkpoint operating in the embedding space — [Download link](https://github.com/SonyResearch/MEGAMI/releases/download/v0/FxGenerator_public.pt).                                                                             |
+| `FxProcessor_public.pt`                        | Public FxProcessor checkpoint (black-box TCN model) — [Download link](https://github.com/SonyResearch/MEGAMI/releases/download/v0/FxProcessor_public.pt).  .                                                                                                  |
 | `music_audioset_epoch_15_esc_90.14.patched.pt` | LAION-CLAP (music) public checkpoint — [Original link](https://huggingface.co/lukewys/laion_clap/blob/main/music_audioset_epoch_15_esc_90.14.pt). |
 | `fxenc_plusplus_default.pt`                    | FXEncoder++ public checkpoint — [Original link](https://huggingface.co/yytung/fxencoder-plusplus/blob/main/fxenc_plusplus_default.pt).            |
 
