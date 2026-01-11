@@ -78,8 +78,7 @@ class Inference:
         if self.FxGenerator_code == "public":
             config_name = "conf_FxGenerator_Public.yaml"
             model_dir = "checkpoints"
-            # ckpt="styleDiT_multitrack_public-170000.pt"
-            ckpt = "FxGenerator_public-50000.pt"
+            ckpt = "FxGenerator_public.pt"
         else:
             raise ValueError(f"Unknown FxGenerator_code: {self.FxGenerator_code}")
 
@@ -120,7 +119,7 @@ class Inference:
         if self.FxProcessor_code == "public":
             config_name = "conf_FxProcessor_Public.yaml"
             model_dir = "checkpoints"
-            ckpt = "FxProcessor_public_blackbox_TCN_340000.pt"
+            ckpt = "FxProcessor_public.pt"
         else:
             raise ValueError(f"Unknown FxProcessor_code: {self.FxProcessor_code}")
 
