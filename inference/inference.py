@@ -54,11 +54,15 @@ class Inference:
         method_args=None,
         path_benchmark="/add/the/path/to/the/benchmark/data/here",
         load_segment_length=525312, #segment length used for loading and extract CLAP embeddings
+        processor_segment_length=525312, #segment length used for loading and extract CLAP embeddings
+        processor_overlap=8192,
     ):
 
         self.method_args = method_args
         self.path_benchmark = path_benchmark
         self.load_segment_length=load_segment_length
+        self.processor_segment_length=processor_segment_length
+        self.processor_overlap=processor_overlap
 
         self.results_df = pd.DataFrame(columns=["track", "method", "metric", "value"])
 
@@ -327,30 +331,81 @@ class Inference:
         self.apply_rms = apply_rms
 
         def apply_effects(x, z_pred):
+            segment_length = self.processor_segment_length
+            overlap = self.processor_overlap
+            total_length = x.shape[-1]
+            batch_size = x.shape[0]
+        
+            # Normalize input and conditioning outside block loop
+            x_norm = x.mean(dim=1, keepdim=True)
+        
+            if total_length > segment_length:
+                y_final = torch.zeros((batch_size, 2, total_length), device=x.device, dtype=x.dtype)
+        
+                hann = torch.hann_window(overlap * 2, device=x.device, dtype=x.dtype)
+                hann_left = hann[:overlap].view(1, 1, -1)
+                hann_right = hann[overlap:].view(1, 1, -1)
 
-            x_norm = x.mean(
-                dim=1, keepdim=True
-            )  # Normalize the input audio by its mean across the tracks
+                step = segment_length - overlap
+                positions = list(range(0, total_length - overlap, step))
+                for i, start in enumerate(positions):
+                    end = min(start + segment_length, total_length)
 
-            # x_norm=self.fx_normalizer(x_norm)  # Apply the fx_normalizer if specified
-            if "public" in self.FxProcessor_code:
-                x_norm = self.fx_normalizer(
-                    x_norm
-                )  # Apply the fx_normalizer if specified
+                    seg_x_norm = x_norm[..., start:end]
+
+                    #check activity in seg_x_norm
+
+                    rms_dry_segment=compute_log_rms_gated_max(seg_x_norm, sample_rate=44100)  # Compute the log RMS of the dry audio
+                    indices_non_silent = torch.where(rms_dry_segment > -45)[0]  # Identify silent tracks
+
+
+                    seg_x_norm_non_silent = seg_x_norm[indices_non_silent]
+                    z_pred_non_silent = z_pred[indices_non_silent]
+
+                    if "public" in self.FxProcessor_code:
+                        seg_x_norm_non_silent = self.fx_normalizer(seg_x_norm_non_silent)
+                    else:
+                        seg_x_norm_non_silent = apply_RMS_normalization(seg_x_norm_non_silent, -25.0, device=self.device, use_gate=True)
+                        seg_x_norm_non_silent = self.fx_normalizer(seg_x_norm_non_silent, use_gate=True)
+        
+                    with torch.no_grad():
+                        seg_y_hat_non_silent=torch.zeros((seg_x_norm_non_silent.shape[0],2, seg_x_norm_non_silent.shape[2]), device=x.device, dtype=x.dtype)
+                        #I thought it may be better (but less efficient) to run it like this instead of in parallel. To avoid OOM issues.
+                        for i in range(seg_x_norm_non_silent.shape[0]):
+                            seg_y_hat_non_silent[i] = self.fx_model(seg_x_norm_non_silent[i].unsqueeze(0), z_pred_non_silent[i].unsqueeze(0)).squeeze(0)
+
+                    seg_y_hat_non_silent = apply_rms(seg_y_hat_non_silent, z_pred_non_silent)
+                    
+                    #fill with zeros the silent segments
+                    seg_y_hat= torch.zeros((seg_x_norm.shape[0], seg_y_hat_non_silent.shape[1], seg_y_hat_non_silent.shape[2]), device=x.device, dtype=x.dtype)
+                    seg_y_hat[indices_non_silent]=seg_y_hat_non_silent
+
+        
+                    seg_len = end - start
+        
+                    if i == 0:
+                        # First segment
+                        y_final[..., start:end-overlap] += seg_y_hat[..., :seg_len-overlap]
+                        y_final[..., end-overlap:end] += seg_y_hat[..., seg_len-overlap:] * hann_right
+                    elif end == total_length:
+                        # Last segment
+                        y_final[..., start:start+overlap] += seg_y_hat[..., :overlap] * hann_left
+                        y_final[..., start+overlap:end] += seg_y_hat[..., overlap:]
+                    else:
+                        # Middle segments
+                        y_final[..., start:start+overlap] += seg_y_hat[..., :overlap] * hann_left
+                        y_final[..., start+overlap:end-overlap] += seg_y_hat[..., overlap:seg_len-overlap]
+                        y_final[..., end-overlap:end] += seg_y_hat[..., seg_len-overlap:] * hann_right
+        
+                return y_final
+        
             else:
-                x_norm = apply_RMS_normalization(
-                    x_norm, -25.0, device=self.device, use_gate=True
-                )  # Apply RMS normalization with gating
-                x_norm = self.fx_normalizer(
-                    x_norm, use_gate=True
-                )  # Apply the fx_normalizer if specified
-
-            with torch.no_grad():
-                y_hat = self.fx_model(x_norm, z_pred)
-
-            y_final = apply_rms(y_hat, z_pred)
-
-            return y_final
+                with torch.no_grad():
+                    y_hat=torch.zeros((x_norm.shape[0], 2, x_norm.shape[2]), device=x.device, dtype=x.dtype)
+                    for i in range(x_norm.shape[0]):
+                        y_hat[i] = self.fx_model(x_norm[i].unsqueeze(0), z_pred[i].unsqueeze(0)).squeeze(0)
+                y_final = apply_rms(y_hat, z_pred)
+                return y_final        
 
         self.apply_effects = apply_effects
 
